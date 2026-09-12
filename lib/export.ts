@@ -47,14 +47,24 @@ function staffOf(aides: Aide[], teacher: string, aideId: string | null): string 
   return [teacher, aideName(aides, aideId)].filter(Boolean).join("・");
 }
 
+function absentDaysOf(input: WeekExportInput, sid: string): number[] {
+  const days = input.week.absent?.[sid];
+  return Array.isArray(days) ? days.filter((d): d is number => typeof d === "number") : [];
+}
+
 // 児童別シート: { title, header[], rows[][] }（セル内は改行区切り）
-function studentSheet(input: WeekExportInput, sid: string): { title: string; header: string[]; rows: string[][] } | null {
+function studentSheet(input: WeekExportInput, sid: string): { title: string; header: string[]; rows: string[][]; notes: string } | null {
   const st = input.students.find((s) => s.id === sid);
   if (!st || !input.week.cells[sid]) return null;
+  const absentDays = Array.isArray(input.week.absent?.[sid]) ? (input.week.absent as Record<string, number[]>)[sid] : [];
   const header = ["曜日", ...PERIODS.map((p) => `${p}時限`)];
   const rows = DAYS.map((d, day) => {
     const row = [`${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`];
     for (const p of PERIODS) {
+      if (absentDays.includes(day)) {
+        row.push("欠席");
+        continue;
+      }
       const c = input.week.cells[sid]?.[slotKey(day, p)];
       const lines = [`[${c?.place === "exchange" ? "交流" : "支援"}] ${c?.subject ?? ""}`];
       if (c?.content) lines.push(c.content);
@@ -64,7 +74,7 @@ function studentSheet(input: WeekExportInput, sid: string): { title: string; hea
     }
     return row;
   });
-  return { title: st.name, header, rows };
+  return { title: st.name, header, rows, notes: typeof st.notes === "string" ? st.notes : "" };
 }
 
 // 介助員別連絡票: { title, header, rows }（行=曜日、列=時限）
@@ -76,7 +86,9 @@ function aideSheet(input: WeekExportInput, aideId: string): { title: string; hea
     const row = [`${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`];
     for (const p of PERIODS) {
       const key = slotKey(day, p);
-      const assigned = input.students.filter((s) => input.week.cells[s.id]?.[key]?.aideId === aideId);
+      const assigned = input.students.filter(
+        (s) => input.week.cells[s.id]?.[key]?.aideId === aideId && !absentDaysOf(input, s.id).includes(day),
+      );
       if (assigned.length === 0) {
         row.push("―");
         continue;
@@ -101,8 +113,13 @@ function overviewRows(input: WeekExportInput): { header: string[]; rows: string[
   DAYS.forEach((d, day) => {
     for (const s of input.students) {
       if (!input.week.cells[s.id]) continue;
+      const absent = absentDaysOf(input, s.id).includes(day);
       const row = [`${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`, s.name];
       for (const p of PERIODS) {
+        if (absent) {
+          row.push("欠席");
+          continue;
+        }
         const c = input.week.cells[s.id]?.[slotKey(day, p)];
         const aide = aideName(input.aides, c?.aideId ?? null);
         row.push(`${c?.place === "exchange" ? "交流" : ""}${c?.subject ?? ""}${aide ? `（${aide}）` : ""}`);
@@ -124,6 +141,7 @@ function exchangeRows(input: WeekExportInput): { header: string[]; rows: string[
       for (const p of PERIODS) {
         const key = slotKey(day, p);
         const inClass = input.students.filter((s) => {
+          if (absentDaysOf(input, s.id).includes(day)) return false;
           const c = input.week.cells[s.id]?.[key];
           if (!c || c.place !== "exchange") return false;
           return (c.classId ?? s.exchangeClassId) === cls.id;
@@ -161,7 +179,13 @@ function exchangeRows(input: WeekExportInput): { header: string[]; rows: string[
       row.push(
         list.length === 0
           ? "―"
-          : list.map((s) => `${s.name}${input.week.cells[s.id]?.[slotKey(day, p)]?.subject ? `：${input.week.cells[s.id]?.[slotKey(day, p)]?.subject}` : ""}`).join("\n"),
+          : list
+              .map((s) => {
+                if (absentDaysOf(input, s.id).includes(day)) return `${s.name}：欠席`;
+                const subj = input.week.cells[s.id]?.[slotKey(day, p)]?.subject;
+                return `${s.name}${subj ? `：${subj}` : ""}`;
+              })
+              .join("\n"),
       );
     }
     rows.push(row);
@@ -195,6 +219,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       ws1.addRow([]);
       ws1.addRow([sheet.title]).font = { bold: true, size: 12 };
       putTable(ws1, sheet.header, sheet.rows);
+      if (sheet.notes) ws1.addRow([`〔配慮メモ〕${sheet.notes}`]);
     }
   }
   if (layouts.overview) {
@@ -275,6 +300,14 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
         docxTable(sheet.header, sheet.rows),
       );
+      if (sheet.notes) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: `〔配慮メモ〕${sheet.notes}`, size: 18, font: FONT })],
+            spacing: { before: 80, after: 80 },
+          }),
+        );
+      }
     }
   }
   if (layouts.overview) {
@@ -447,6 +480,7 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
       needBreak();
       pdfText(c, sheet.title, 11, 2);
       pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+      if (sheet.notes) pdfText(c, `〔配慮メモ〕${sheet.notes}`, 9, 3);
     }
   }
   if (layouts.overview) {

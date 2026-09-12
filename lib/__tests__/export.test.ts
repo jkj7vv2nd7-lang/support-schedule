@@ -66,6 +66,16 @@ describe("week export", () => {
     expect((await buildWeekDocx(input(), only)).length).toBeGreaterThan(0);
     expect((await buildWeekXlsx(input(), only)).length).toBeGreaterThan(0);
   });
+
+  it("欠席と配慮メモが反映される", async () => {
+    const data = input();
+    data.week.absent = { s1: [0] };
+    data.students = [{ ...data.students[0], notes: "アレルギーあり" }];
+    const buf = await buildWeekPdf(data, { sheets: true, overview: true, exchange: false, aides: false });
+    expect(buf.length).toBeGreaterThan(0);
+    expect((await buildWeekDocx(data)).length).toBeGreaterThan(0);
+    expect((await buildWeekXlsx(data)).length).toBeGreaterThan(0);
+  });
 });
 
 describe("sanitizeFileName", () => {

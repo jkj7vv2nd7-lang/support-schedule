@@ -6,6 +6,7 @@ import { Btn, Card, Field, Notice, Select, StepHeading } from "@/components/ui";
 import {
   DAYS,
   PERIODS,
+  isAbsent,
   slotKey,
   type Aide,
   type CellPlan,
@@ -88,7 +89,7 @@ export default function WeeksPage() {
   }
 
   function runAutoAssign(week: WeekPlan) {
-    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts), aides));
+    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts, week.absent), aides, week.absent));
   }
 
   function setPost(weekId: string, aideId: string, kind: "studentIds" | "classIds", id: string, on: boolean) {
@@ -111,6 +112,30 @@ export default function WeeksPage() {
           posts.push(next);
         }
         return { ...w, posts, updatedAt: Date.now() };
+      }),
+    );
+  }
+
+  // 欠席トグル。欠席にした曜日は介助員を外して空ける
+  function toggleAbsent(weekId: string, sid: string, day: number) {
+    persist(
+      weeks.map((w) => {
+        if (w.id !== weekId) return w;
+        const days = [...(w.absent?.[sid] ?? [])];
+        const idx = days.indexOf(day);
+        if (idx >= 0) days.splice(idx, 1);
+        else days.push(day);
+        const absent = { ...(w.absent ?? {}) };
+        if (days.length > 0) absent[sid] = days.sort();
+        else delete absent[sid];
+        const bySlot = { ...(w.cells[sid] ?? {}) };
+        for (const [key, cell] of Object.entries(bySlot)) {
+          if (Number(key.split("-")[0]) === day && cell.aideId) {
+            bySlot[key] = { ...cell, aideId: null };
+          }
+        }
+        const cells = { ...w.cells, [sid]: bySlot };
+        return { ...w, absent, cells, updatedAt: Date.now() };
       }),
     );
   }
@@ -296,6 +321,33 @@ export default function WeeksPage() {
                   ))}
                 </div>
                 {openStudentId && studentById.has(openStudentId) ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-bold text-zinc-600">
+                      {studentById.get(openStudentId)?.name}の欠席：
+                    </span>
+                    {DAYS.map((d, day) => {
+                      const off = (open.absent?.[openStudentId] ?? []).includes(day);
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          aria-pressed={off}
+                          title={`${d}曜日を欠席にする`}
+                          onClick={() => toggleAbsent(open.id, openStudentId, day)}
+                          className={`rounded-lg border px-2.5 py-1 text-xs font-bold transition-colors ${
+                            off
+                              ? "border-red-500 bg-red-50 text-red-700"
+                              : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300"
+                          }`}
+                        >
+                          {d}{off ? "休" : ""}
+                        </button>
+                      );
+                    })}
+                    <span className="text-[11px] text-zinc-400">欠席日は介助員を外し、印刷では「欠席」と表示</span>
+                  </div>
+                ) : null}
+                {openStudentId && studentById.has(openStudentId) ? (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] border-collapse text-xs">
                       <thead>
@@ -314,6 +366,7 @@ export default function WeeksPage() {
                               const key = slotKey(d, p);
                               const cell = open.cells[openStudentId]?.[key];
                               const active = sel?.sid === openStudentId && sel?.key === key;
+                              const absent = isAbsent(open, openStudentId, d);
                               return (
                                 <td key={d} className="border border-zinc-200 p-0.5 align-top">
                                   <button
@@ -321,11 +374,17 @@ export default function WeeksPage() {
                                     onClick={() => setSel(active ? null : { sid: openStudentId, key })}
                                     className={`block w-full rounded-lg border p-1.5 text-left transition-colors ${
                                       active ? "border-teal-600 bg-teal-50" : "border-transparent hover:border-zinc-300"
-                                    } ${cell?.place === "exchange" ? "bg-sky-50/60" : ""}`}
+                                    } ${absent ? "bg-zinc-100" : cell?.place === "exchange" ? "bg-sky-50/60" : ""}`}
                                   >
-                                    <span className={`inline-block rounded px-1 text-[10px] font-bold ${cell?.place === "exchange" ? "bg-sky-200 text-sky-900" : "bg-zinc-200 text-zinc-700"}`}>
-                                      {cell?.place === "exchange" ? "交流" : "支援"}
-                                    </span>
+                                    {absent ? (
+                                      <span className="inline-block rounded bg-zinc-300 px-1 text-[10px] font-bold text-zinc-600">
+                                        欠席
+                                      </span>
+                                    ) : (
+                                      <span className={`inline-block rounded px-1 text-[10px] font-bold ${cell?.place === "exchange" ? "bg-sky-200 text-sky-900" : "bg-zinc-200 text-zinc-700"}`}>
+                                        {cell?.place === "exchange" ? "交流" : "支援"}
+                                      </span>
+                                    )}
                                     <span className="mt-0.5 block truncate text-xs font-bold">{cell?.subject || "（未定）"}</span>
                                     <span className="block truncate text-[10px] text-zinc-500">
                                       {cell?.aideId ? aideById.get(cell.aideId)?.name ?? "" : ""}
@@ -455,13 +514,20 @@ function WeekPrint({
                         </td>
                         {PERIODS.map((p) => {
                           const c = w.cells[s.id]?.[slotKey(day, p)];
+                          const absent = isAbsent(w, s.id, day);
                           return (
                             <td key={p} className="border px-1 py-1 align-top">
-                              <span className="font-bold">[{c?.place === "exchange" ? "交流" : "支援"}] {c?.subject}</span>
-                              {c?.content ? <span className="block">{c.content}</span> : null}
-                              <span className="block text-zinc-500">
-                                {[c?.teacher, c?.aideId ? aideById.get(c.aideId) : ""].filter(Boolean).join("・")}
-                              </span>
+                              {absent ? (
+                                <span className="font-bold">欠席</span>
+                              ) : (
+                                <>
+                                  <span className="font-bold">[{c?.place === "exchange" ? "交流" : "支援"}] {c?.subject}</span>
+                                  {c?.content ? <span className="block">{c.content}</span> : null}
+                                  <span className="block text-zinc-500">
+                                    {[c?.teacher, c?.aideId ? aideById.get(c.aideId) : ""].filter(Boolean).join("・")}
+                                  </span>
+                                </>
+                              )}
                             </td>
                           );
                         })}
@@ -469,6 +535,12 @@ function WeekPrint({
                     ))}
                   </tbody>
                 </table>
+                {s.notes ? (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed">
+                    <span className="font-bold">〔配慮メモ・引き継ぎ〕</span>
+                    <span className="whitespace-pre-wrap">{s.notes}</span>
+                  </div>
+                ) : null}
               </div>
             ))
           : null}
@@ -501,10 +573,17 @@ function WeekPrint({
                       <td className="border px-1 py-1 font-bold">{s.name}</td>
                       {PERIODS.map((p) => {
                         const c = w.cells[s.id]?.[slotKey(day, p)];
+                        const absent = isAbsent(w, s.id, day);
                         return (
                           <td key={p} className="border px-1 py-1">
-                            {c?.place === "exchange" ? "交流" : ""}{c?.subject}
-                            {c?.aideId ? `（${aideById.get(c.aideId) ?? ""}）` : ""}
+                            {absent ? (
+                              "欠席"
+                            ) : (
+                              <>
+                                {c?.place === "exchange" ? "交流" : ""}{c?.subject}
+                                {c?.aideId ? `（${aideById.get(c.aideId) ?? ""}）` : ""}
+                              </>
+                            )}
                           </td>
                         );
                       })}
@@ -537,6 +616,7 @@ function WeekPrint({
                     cells: (p: number) => {
                       const key = slotKey(day, p);
                       const inClass = students.filter((s) => {
+                        if (isAbsent(w, s.id, day)) return false;
                         const c = w.cells[s.id]?.[key];
                         if (!c || c.place !== "exchange") return false;
                         return (c.classId ?? s.exchangeClassId) === cls.id;
@@ -576,10 +656,11 @@ function WeekPrint({
                         <>
                           {inRoom.map((s) => {
                             const c = w.cells[s.id]?.[key];
+                            const absent = isAbsent(w, s.id, day);
                             return (
                               <span key={s.id} className="block">
                                 <span className="font-bold">{s.name}</span>
-                                {c?.subject ? `：${c.subject}` : ""}
+                                {absent ? "：欠席" : c?.subject ? `：${c.subject}` : ""}
                               </span>
                             );
                           })}
@@ -637,7 +718,7 @@ function WeekPrint({
                             </td>
                             {PERIODS.map((p) => {
                               const key = slotKey(day, p);
-                              const assigned = students.filter((s) => w.cells[s.id]?.[key]?.aideId === a.id);
+                              const assigned = students.filter((s) => w.cells[s.id]?.[key]?.aideId === a.id && !isAbsent(w, s.id, day));
                               return (
                                 <td key={p} className="border px-1 py-1 align-top">
                                   {assigned.length === 0 ? (

@@ -35,6 +35,8 @@ export type Student = {
   exchangeClassId: string | null;
   // 交流に行くコマ
   exchangeSlots: ExchangeSlot[];
+  // 配慮メモ（アレルギー・声かけの工夫など。児童別シートに印字）
+  notes?: string;
 };
 
 // 介助員
@@ -70,9 +72,16 @@ export type WeekPlan = {
   cells: Record<string, Record<string, CellPlan>>;
   // 今週の介助員担当（任意）
   posts?: WeekAidePost[];
+  // 欠席（studentId → 曜日index配列）
+  absent?: Record<string, number[]>;
   createdAt: number;
   updatedAt: number;
 };
+
+export function isAbsent(week: Pick<WeekPlan, "absent">, studentId: string, day: number): boolean {
+  const days = week.absent?.[studentId];
+  return Array.isArray(days) && days.includes(day);
+}
 
 export function emptyTimetable(): SlotContent[][] {
   return Array.from({ length: 5 }, () =>

@@ -45,6 +45,7 @@ export function applyRoster(
   cells: Record<string, Record<string, CellPlan>>,
   students: Student[],
   posts: WeekAidePost[] | undefined,
+  absent?: Record<string, number[]>,
 ): Record<string, Record<string, CellPlan>> {
   const list = Array.isArray(posts) ? posts : [];
   const clean = list
@@ -70,9 +71,10 @@ export function applyRoster(
   const classOf = new Map(students.map((s) => [s.id, s.exchangeClassId]));
   const out: Record<string, Record<string, CellPlan>> = {};
   for (const [sid, bySlot] of Object.entries(cells)) {
+    const offDays = Array.isArray(absent?.[sid]) ? (absent as Record<string, number[]>)[sid] : [];
     const next: Record<string, CellPlan> = {};
     for (const [key, cell] of Object.entries(bySlot)) {
-      if (cell.aideId) {
+      if (cell.aideId || offDays.includes(Number(key.split("-")[0]))) {
         next[key] = cell;
         continue;
       }
@@ -87,8 +89,14 @@ export function applyRoster(
 export function autoAssignAides(
   cells: Record<string, Record<string, CellPlan>>,
   aides: Aide[],
+  absent?: Record<string, number[]>,
 ): Record<string, Record<string, CellPlan>> {
   if (aides.length === 0) return cells;
+  const absentKey = (sid: string, key: string): boolean => {
+    const days = absent?.[sid];
+    if (!Array.isArray(days)) return false;
+    return days.includes(Number(key.split("-")[0]));
+  };
   const off = new Set<string>();
   for (const a of aides) {
     for (const s of a.offSlots) off.add(`${a.id}@${slotKey(s.day, s.period)}`);
@@ -104,7 +112,7 @@ export function autoAssignAides(
   for (const [sid, bySlot] of Object.entries(cells)) {
     const next: Record<string, CellPlan> = {};
     for (const [key, cell] of Object.entries(bySlot)) {
-      if (cell.aideId) {
+      if (cell.aideId || absentKey(sid, key)) {
         next[key] = cell;
         continue;
       }

@@ -79,6 +79,7 @@ export default function PeoplePage() {
   const [sName, setSName] = useState("");
   const [sClassId, setSClassId] = useState("");
   const [sSlots, setSSlots] = useState<ExchangeSlot[]>([]);
+  const [sNotes, setSNotes] = useState("");
   const [editingStudent, setEditingStudent] = useState<string | null>(null);
 
   const [aName, setAName] = useState("");
@@ -126,6 +127,7 @@ export default function PeoplePage() {
     setSName("");
     setSClassId("");
     setSSlots([]);
+    setSNotes("");
   }
 
   function editStudent(st: Student) {
@@ -133,6 +135,7 @@ export default function PeoplePage() {
     setSName(st.name);
     setSClassId(st.exchangeClassId ?? "");
     setSSlots(st.exchangeSlots);
+    setSNotes(st.notes ?? "");
   }
 
   function saveStudent() {
@@ -145,13 +148,13 @@ export default function PeoplePage() {
       persistStudents(
         students.map((x) =>
           x.id === editingStudent
-            ? { ...x, name: sName.trim(), exchangeClassId: sClassId || null, exchangeSlots: sSlots }
+            ? { ...x, name: sName.trim(), exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined }
             : x,
         ),
       );
     } else {
       persistStudents([
-        { id: makeId(), name: sName.trim(), exchangeClassId: sClassId || null, exchangeSlots: sSlots },
+        { id: makeId(), name: sName.trim(), exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined },
         ...students,
       ]);
     }
@@ -215,6 +218,20 @@ export default function PeoplePage() {
             <SlotGrid selected={sSlots} onToggle={(d, p) => setSSlots((prev) => toggleSlot(prev, d, p))} hint={hintFor} />
           </div>
         ) : null}
+        <div className="mt-3">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700">
+              配慮メモ（アレルギー・声かけの工夫など。児童別シートに印字されます）
+            </span>
+            <textarea
+              value={sNotes}
+              onChange={(e) => setSNotes(e.target.value)}
+              rows={2}
+              placeholder="例：ナッツアレルギーあり。初めての場所では緊張するため声かけを"
+              className="min-h-[56px] w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed placeholder:text-zinc-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+            />
+          </label>
+        </div>
         <div className="mt-3 flex gap-2">
           <Btn onClick={saveStudent}>{editingStudent ? "更新する" : "登録する"}</Btn>
           {editingStudent ? <Btn variant="secondary" onClick={resetStudentForm}>キャンセル</Btn> : null}
