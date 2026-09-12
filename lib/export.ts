@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { Document, Packer, PageBreak, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
@@ -190,10 +190,14 @@ function docxTable(header: string[], rows: string[][]) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
-      ...(header.length > 0 ? [new TableRow({ children: header.map((h, i) => cell(h, true, i)) })] : []),
-      ...rows.map((r) => new TableRow({ children: r.map((t, i) => cell(t, false, i)) })),
+      ...(header.length > 0 ? [new TableRow({ children: header.map((h, i) => cell(h, true, i)), tableHeader: true, cantSplit: true })] : []),
+      ...rows.map((r) => new TableRow({ children: r.map((t, i) => cell(t, false, i)), cantSplit: true })),
     ],
   });
+}
+
+function pageBreakPara() {
+  return new Paragraph({ children: [new PageBreak()] });
 }
 
 export async function buildWeekDocx(input: WeekExportInput): Promise<Buffer> {
@@ -204,16 +208,19 @@ export async function buildWeekDocx(input: WeekExportInput): Promise<Buffer> {
   for (const s of input.students) {
     const sheet = studentSheet(input, s.id);
     if (!sheet) continue;
+    if (children.length > 1) children.push(pageBreakPara());
     children.push(
       new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
       docxTable(sheet.header, sheet.rows),
     );
   }
+  children.push(pageBreakPara());
   children.push(
     new Paragraph({ children: [new TextRun({ text: "全体一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
   );
   const ov = overviewRows(input);
   children.push(docxTable(ov.header, ov.rows));
+  children.push(pageBreakPara());
   children.push(
     new Paragraph({ children: [new TextRun({ text: "交流クラス別", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
   );
@@ -276,6 +283,14 @@ function pdfText(c: PdfCtx, text: string, size = 9, after = 3) {
   c.y += after;
 }
 
+// 役割の違う表はページを分ける（既に先頭なら改ページしない）
+function pageBreak(c: PdfCtx) {
+  if (c.y > c.top + 1) {
+    c.doc.addPage();
+    c.y = c.top;
+  }
+}
+
 function pdfTable(c: PdfCtx, header: string[], rows: string[][]) {
   const colCount = Math.max(header.length, 1, ...rows.map((r) => r.length));
   const widths = Array.from({ length: colCount }, () => c.usable / colCount);
@@ -319,6 +334,12 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][]) {
     if (c.y + h > 595.28 - c.top) {
       c.doc.addPage();
       c.y = c.top;
+      // 長い表の続きには表頭を繰り返す
+      if (!isHeader && header.length > 0) {
+        const hh = rowH(header);
+        drawRow(header, true, c.y);
+        c.y += hh;
+      }
     }
     drawRow(cells, isHeader, c.y);
     c.y += h;
@@ -336,15 +357,20 @@ export async function buildWeekPdf(input: WeekExportInput): Promise<Buffer> {
   const c = makePdf();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   pdfText(c, title, 14, 4);
+  let first = true;
   for (const s of input.students) {
     const sheet = studentSheet(input, s.id);
     if (!sheet) continue;
+    if (!first) pageBreak(c);
+    first = false;
     pdfText(c, sheet.title, 11, 2);
     pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
   }
+  pageBreak(c);
   pdfText(c, "全体一覧", 11, 2);
   const ov = overviewRows(input);
   pdfTable(c, ov.header, ov.rows);
+  pageBreak(c);
   pdfText(c, "交流クラス別", 11, 2);
   const ex = exchangeRows(input);
   pdfTable(c, ex.header, ex.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
