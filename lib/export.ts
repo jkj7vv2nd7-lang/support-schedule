@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
-import { addDays, formatWeek } from "@/lib/schedule";
+import { addDays, classBlockTables, formatWeek } from "@/lib/schedule";
 
 export type WeekExportInput = {
   week: WeekPlan;
@@ -130,69 +130,6 @@ function overviewRows(input: WeekExportInput): { header: string[]; rows: string[
   return { header, rows };
 }
 
-// 交流クラス別: rows = 曜日×（クラス＋支援）
-function exchangeRows(input: WeekExportInput): { header: string[]; rows: string[][] } {
-  const header = ["曜日", "クラス", ...PERIODS.map((p) => `${p}時限`)];
-  const rows: string[][] = [];
-  DAYS.forEach((d, day) => {
-    const dayLabel = `${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`;
-    for (const cls of input.classes) {
-      const row = [dayLabel, cls.name];
-      for (const p of PERIODS) {
-        const key = slotKey(day, p);
-        const inClass = input.students.filter((s) => {
-          if (absentDaysOf(input, s.id).includes(day)) return false;
-          const c = input.week.cells[s.id]?.[key];
-          if (!c || c.place !== "exchange") return false;
-          return (c.classId ?? s.exchangeClassId) === cls.id;
-        });
-        if (inClass.length === 0) {
-          row.push("―");
-          continue;
-        }
-        const slot = cls.timetable[day]?.[p - 1];
-        const subj = slot?.subject || inClass.map((s) => input.week.cells[s.id]?.[key]?.subject ?? "").find(Boolean) || "";
-        const cont = slot?.content || inClass.map((s) => input.week.cells[s.id]?.[key]?.content ?? "").find(Boolean) || "";
-        const staff = Array.from(
-          new Set(
-            inClass.flatMap((s) => {
-              const c = input.week.cells[s.id]?.[key];
-              return [c?.teacher ?? "", aideName(input.aides, c?.aideId ?? null)];
-            }).filter(Boolean),
-          ),
-        ).join("・");
-        const lines = [inClass.map((s) => s.name).join("・")];
-        if (subj) lines.push(`${subj}${cont ? `：${cont}` : ""}`);
-        if (staff) lines.push(staff);
-        row.push(lines.join("\n"));
-      }
-      rows.push(row);
-    }
-    const inRoom = (p: number) =>
-      input.students.filter((s) => {
-        const c = input.week.cells[s.id]?.[slotKey(day, p)];
-        return c && c.place !== "exchange";
-      });
-    const row = [dayLabel, "支援学級"];
-    for (const p of PERIODS) {
-      const list = inRoom(p);
-      row.push(
-        list.length === 0
-          ? "―"
-          : list
-              .map((s) => {
-                if (absentDaysOf(input, s.id).includes(day)) return `${s.name}：欠席`;
-                const subj = input.week.cells[s.id]?.[slotKey(day, p)]?.subject;
-                return `${s.name}${subj ? `：${subj}` : ""}`;
-              })
-              .join("\n"),
-      );
-    }
-    rows.push(row);
-  });
-  return { header, rows };
-}
-
 /* ============================== Excel ============================== */
 
 export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true }): Promise<Buffer> {
@@ -231,8 +168,11 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
   if (layouts.exchange) {
     const ws3 = wb.addWorksheet("交流クラス別");
     ws3.addRow([title]);
-    const ex = exchangeRows(input);
-    putTable(ws3, ex.header, ex.rows);
+    for (const t of classBlockTables(input)) {
+      ws3.addRow([]);
+      ws3.addRow([t.title]).font = { bold: true, size: 12 };
+      putTable(ws3, t.header, t.rows);
+    }
   }
   if (layouts.aides) {
     const ws4 = wb.addWorksheet("介助員別");
@@ -323,8 +263,12 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     children.push(
       new Paragraph({ children: [new TextRun({ text: "交流クラス別", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
     );
-    const ex = exchangeRows(input);
-    children.push(docxTable(ex.header, ex.rows));
+    for (const t of classBlockTables(input)) {
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: t.title, bold: true, size: 18, font: FONT })], spacing: { before: 120, after: 60 } }),
+        docxTable(t.header, t.rows),
+      );
+    }
   }
   if (layouts.aides) {
     for (const a of input.aides) {
@@ -492,8 +436,10 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
   if (layouts.exchange) {
     needBreak();
     pdfText(c, "交流クラス別", 11, 2);
-    const ex = exchangeRows(input);
-    pdfTable(c, ex.header, ex.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+    for (const t of classBlockTables(input)) {
+      pdfText(c, t.title, 10, 2);
+      pdfTable(c, t.header, t.rows.map((r) => r.map((x) => x.replace(/\n/g, "／"))));
+    }
   }
   if (layouts.aides) {
     for (const a of input.aides) {

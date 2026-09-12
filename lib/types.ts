@@ -22,6 +22,10 @@ export type ExchangeClass = {
   grade: string;
   // timetable[day][period]（5日×6時限）
   timetable: SlotContent[][];
+  // 朝活動（曜日別・任意）
+  morning?: string[];
+  // 連絡等（任意）
+  notice?: string;
   updatedAt: number;
 };
 
