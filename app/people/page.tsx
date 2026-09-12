@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Btn, Card, Field, Notice, Select, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeSlot, type Student } from "@/lib/types";
-import { K_AIDES, K_CLASSES, K_STUDENTS, loadAides, loadClasses, loadStudents, makeId, saveAides, saveStudents } from "@/lib/storage";
+import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveAides, saveStudents, saveWeeks } from "@/lib/storage";
+import { detachAideFromWeeks, detachStudentFromWeeks } from "@/lib/schedule";
 import { refreshStored, useStored } from "@/lib/store";
 
 function toggleSlot(list: ExchangeSlot[], day: number, period: number): ExchangeSlot[] {
@@ -90,6 +91,26 @@ export default function PeoplePage() {
       return;
     }
     refreshStored(K_STUDENTS, loadStudents);
+  }
+
+  function removeStudent(st: Student) {
+    if (!window.confirm(`${st.name}を削除しますか？`)) return;
+    persistStudents(students.filter((x) => x.id !== st.id));
+    const detached = detachStudentFromWeeks(loadWeeks(), st.id);
+    if (detached.changed) {
+      saveWeeks(detached.weeks);
+      refreshStored(K_WEEKS, loadWeeks);
+    }
+  }
+
+  function removeAide(a: Aide) {
+    if (!window.confirm(`${a.name}を削除しますか？`)) return;
+    persistAides(aides.filter((x) => x.id !== a.id));
+    const detached = detachAideFromWeeks(loadWeeks(), a.id);
+    if (detached.changed) {
+      saveWeeks(detached.weeks);
+      refreshStored(K_WEEKS, loadWeeks);
+    }
   }
 
   function persistAides(next: Aide[]) {
@@ -215,7 +236,7 @@ export default function PeoplePage() {
                     variant="danger"
                     className="px-3 py-1.5 text-xs"
                     onClick={() => {
-                      if (window.confirm(`${st.name}を削除しますか？`)) persistStudents(students.filter((x) => x.id !== st.id));
+                      if (window.confirm(`${st.name}を削除しますか？`)) removeStudent(st);
                     }}
                   >
                     削除
@@ -265,7 +286,7 @@ export default function PeoplePage() {
                   variant="danger"
                   className="px-3 py-1.5 text-xs"
                   onClick={() => {
-                    if (window.confirm(`${a.name}を削除しますか？`)) persistAides(aides.filter((x) => x.id !== a.id));
+                    if (window.confirm(`${a.name}を削除しますか？`)) removeAide(a);
                   }}
                 >
                   削除

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyRoster, autoAssignAides, buildWeekCells } from "@/lib/schedule";
-import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student } from "@/lib/types";
+import { applyRoster, autoAssignAides, buildWeekCells, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
+import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
 function cls(): ExchangeClass {
   const t = emptyTimetable();
@@ -88,5 +88,45 @@ describe("applyRoster", () => {
     const cells = buildWeekCells([student()], [cls()]);
     const out = applyRoster(cells, [student()], [null, { aideId: 1 }, { aideId: "a1", studentIds: "x" }] as unknown as []);
     expect(out.s1[slotKey(0, 1)].aideId).toBeNull();
+  });
+});
+
+function weekWithRefs(): WeekPlan {
+  return {
+    id: "w",
+    weekStart: "2026-09-07",
+    cells: {
+      s1: {
+        "0-0": { place: "exchange", subject: "国語", content: "", teacher: "", aideId: "a1", classId: "c1" },
+        "0-1": { place: "support", subject: "", content: "", teacher: "", aideId: "a1" },
+      },
+    },
+    posts: [{ aideId: "a1", studentIds: ["s1"], classIds: [] }],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+describe("detach", () => {
+  it("児童削除でセルを除去", () => {
+    const { weeks, changed } = detachStudentFromWeeks([weekWithRefs()], "s1");
+    expect(changed).toBe(true);
+    expect(weeks[0].cells.s1).toBeUndefined();
+    expect(detachStudentFromWeeks([weekWithRefs()], "sx").changed).toBe(false);
+  });
+
+  it("介助員削除でセル・担当表を除去", () => {
+    const { weeks, changed } = detachAideFromWeeks([weekWithRefs()], "a1");
+    expect(changed).toBe(true);
+    expect(weeks[0].cells.s1["0-0"].aideId).toBeNull();
+    expect(weeks[0].posts).toEqual([]);
+  });
+
+  it("クラス削除で児童の交流設定をクリア", () => {
+    const st: Student = { id: "s1", name: "山田", exchangeClassId: "c1", exchangeSlots: [{ day: 0, period: 1 }] };
+    const { students, changed } = detachClassFromStudents([st], "c1");
+    expect(changed).toBe(true);
+    expect(students[0].exchangeClassId).toBeNull();
+    expect(students[0].exchangeSlots).toEqual([]);
   });
 });

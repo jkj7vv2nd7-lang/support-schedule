@@ -58,6 +58,10 @@ export default function WeeksPage() {
       setError("先に「児童・介助員」で支援児童を登録してください");
       return;
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || Number.isNaN(new Date(`${newDate}T00:00:00`).getTime())) {
+      setError("週（月曜）の日付が正しくありません");
+      return;
+    }
     const now = Date.now();
     let cells: WeekPlan["cells"];
     if (copyFrom) {

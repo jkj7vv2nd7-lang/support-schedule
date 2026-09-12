@@ -1,4 +1,4 @@
-import { blankCell, slotKey, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost } from "@/lib/types";
+import { blankCell, slotKey, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost, type WeekPlan } from "@/lib/types";
 
 // 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）
 export function buildWeekCells(
@@ -146,4 +146,61 @@ export function formatWeek(weekStart: string): string {
   const end = addDays(weekStart, 4);
   const f = (s: string) => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}`;
   return `${f(weekStart)}〜${f(end)}の週`;
+}
+
+// 削除時の参照整理。壊れた参照を落とし、現行データを守る。
+export function detachClassFromStudents(students: Student[], classId: string): { students: Student[]; changed: boolean } {
+  let changed = false;
+  const next = students.map((s) => {
+    if (s.exchangeClassId !== classId) return s;
+    changed = true;
+    return { ...s, exchangeClassId: null, exchangeSlots: [] };
+  });
+  return { students: next, changed };
+}
+
+export function detachStudentFromWeeks(weeks: WeekPlan[], studentId: string): { weeks: WeekPlan[]; changed: boolean } {
+  let changed = false;
+  const next = weeks.map((w) => {
+    if (!w.cells[studentId]) return w;
+    changed = true;
+    const cells = { ...w.cells };
+    delete cells[studentId];
+    return { ...w, cells, updatedAt: Date.now() };
+  });
+  return { weeks: next, changed };
+}
+
+export function detachAideFromWeeks(weeks: WeekPlan[], aideId: string): { weeks: WeekPlan[]; changed: boolean } {
+  let changed = false;
+  const next = weeks.map((w) => {
+    let cells = w.cells;
+    let posts = w.posts;
+    let touched = false;
+    const nc: WeekPlan["cells"] = {};
+    for (const [sid, bySlot] of Object.entries(cells)) {
+      const nb: Record<string, CellPlan> = {};
+      for (const [key, cell] of Object.entries(bySlot)) {
+        if (cell.aideId === aideId) {
+          touched = true;
+          nb[key] = { ...cell, aideId: null };
+        } else {
+          nb[key] = cell;
+        }
+      }
+      nc[sid] = nb;
+    }
+    if (touched) cells = nc;
+    if (Array.isArray(posts)) {
+      const np = posts.filter((p) => p && typeof p === "object" && (p as { aideId?: unknown }).aideId !== aideId);
+      if (np.length !== posts.length) {
+        touched = true;
+        posts = np as WeekPlan["posts"];
+      }
+    }
+    if (!touched) return w;
+    changed = true;
+    return { ...w, cells, posts, updatedAt: Date.now() };
+  });
+  return { weeks: next, changed };
 }
