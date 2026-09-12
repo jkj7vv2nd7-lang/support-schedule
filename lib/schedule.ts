@@ -167,101 +167,81 @@ function absentDaysOf(week: WeekPlan, sid: string): number[] {
   return Array.isArray(days) ? days.filter((d): d is number => typeof d === "number") : [];
 }
 
-// 交流クラス別ブロック（参考様式準拠）
-export type ExchangeCell = { subject: string; content: string; staff: string; names: string };
-export type ExchangeClassBlock = {
-  classId: string;
-  className: string;
-  grade: string;
-  studentNames: string[];
-  dates: string[];
-  weekdays: string[];
-  morning: string[];
-  notice: string;
-  cells: ExchangeCell[][]; // [day][period]
-};
+// 交流クラス別：曜日ごとのまとめ（1曜日＝1表：行=クラス＋支援学級、列=時限）
+export type DaySectionRow = { label: string; cells: string[] };
+export type DaySection = { day: number; weekday: string; date: string; rows: DaySectionRow[] };
 
-export type WeekBlockInput = {
+export type WeekDayInput = {
   week: WeekPlan;
   students: Student[];
   aides: Aide[];
   classes: ExchangeClass[];
 };
 
-function exchangeCell(input: WeekBlockInput, cls: ExchangeClass, day: number, p: number): ExchangeCell & { names: string } {
-  const key = slotKey(day, p);
-  const inClass = input.students.filter((s) => {
-    if (absentDaysOf(input.week, s.id).includes(day)) return false;
-    const c = input.week.cells[s.id]?.[key];
-    if (!c || c.place !== "exchange") return false;
-    return (c.classId ?? s.exchangeClassId) === cls.id;
-  });
-  if (inClass.length === 0) return { subject: "", content: "", staff: "", names: "" };
-  const slot = cls.timetable[day]?.[p - 1];
-  const subj = slot?.subject || inClass.map((s) => input.week.cells[s.id]?.[key]?.subject ?? "").find(Boolean) || "";
-  const cont = slot?.content || inClass.map((s) => input.week.cells[s.id]?.[key]?.content ?? "").find(Boolean) || "";
-  const staff = Array.from(
-    new Set(
-      inClass.flatMap((s) => {
-        const c = input.week.cells[s.id]?.[key];
-        return [c?.teacher ?? "", aideName(input.aides, c?.aideId ?? null)];
-      }).filter(Boolean),
-    ),
-  ).join("・");
-  return { subject: subj, content: cont, staff, names: inClass.map((s) => s.name).join("・") };
-}
-
-export function classBlocks(input: WeekBlockInput): ExchangeClassBlock[] {
-  return input.classes.map((cls) => ({
-    classId: cls.id,
-    className: cls.name,
-    grade: cls.grade ?? "",
-    studentNames: input.students
-      .filter((s) =>
-        Object.entries(input.week.cells[s.id] ?? {}).some(([, c]) => {
+export function daySections(input: WeekDayInput): DaySection[] {
+  return DAYS.map((d, day) => {
+    const date = addDays(input.week.weekStart, day).slice(5).replace("-", "/");
+    const rows: DaySectionRow[] = [];
+    for (const cls of input.classes) {
+      const cells = PERIODS.map((p) => {
+        const key = slotKey(day, p);
+        const inClass = input.students.filter((s) => {
+          if (absentDaysOf(input.week, s.id).includes(day)) return false;
+          const c = input.week.cells[s.id]?.[key];
           if (!c || c.place !== "exchange") return false;
           return (c.classId ?? s.exchangeClassId) === cls.id;
-        }),
-      )
-      .map((s) => s.name),
-    dates: DAYS.map((_, day) => addDays(input.week.weekStart, day).slice(5).replace("-", "/")),
-    weekdays: [...DAYS],
-    morning: Array.from({ length: 5 }, (_, day) => (Array.isArray(cls.morning) ? cls.morning[day] ?? "" : "")),
-    notice: typeof cls.notice === "string" ? cls.notice : "",
-    cells: DAYS.map((_, day) => PERIODS.map((p) => exchangeCell(input, cls, day, p))),
-  }));
+        });
+        if (inClass.length === 0) return "―";
+        const slot = cls.timetable[day]?.[p - 1];
+        const subj = slot?.subject || inClass.map((s) => input.week.cells[s.id]?.[key]?.subject ?? "").find(Boolean) || "";
+        const cont = slot?.content || inClass.map((s) => input.week.cells[s.id]?.[key]?.content ?? "").find(Boolean) || "";
+        const staff = Array.from(
+          new Set(
+            inClass.flatMap((s) => {
+              const c = input.week.cells[s.id]?.[key];
+              return [c?.teacher ?? "", aideName(input.aides, c?.aideId ?? null)];
+            }).filter(Boolean),
+          ),
+        ).join("・");
+        const lines = [inClass.map((s) => s.name).join("・")];
+        if (subj) lines.push(`${subj}${cont ? `：${cont}` : ""}`);
+        if (staff) lines.push(staff);
+        return lines.join("\n");
+      });
+      rows.push({ label: cls.name, cells });
+    }
+    const sup = PERIODS.map((p) => {
+      const key = slotKey(day, p);
+      const list = input.students.filter((s) => {
+        const c = input.week.cells[s.id]?.[key];
+        return c && c.place !== "exchange";
+      });
+      if (list.length === 0) return "―";
+      return list
+        .map((s) => {
+          if (absentDaysOf(input.week, s.id).includes(day)) return `${s.name}：欠席`;
+          const subj = input.week.cells[s.id]?.[key]?.subject;
+          return `${s.name}${subj ? `：${subj}` : ""}`;
+        })
+        .join("\n");
+    });
+    rows.push({ label: "支援学級", cells: sup });
+    return { day, weekday: d, date, rows };
+  });
 }
 
-// クラス別ブロックの印刷用テーブル（参考様式準拠：日付・曜日・朝活動・時限×教科/内容/担当・連絡等）
-export type ClassBlockTable = { title: string; header: string[]; rows: string[][] };
-
-export function classBlockTables(input: WeekBlockInput): ClassBlockTable[] {
-  return classBlocks(input).map((b) => {
-    const header = ["", ...b.dates];
-    const rows: string[][] = [
-      ["曜日", ...b.weekdays],
-      ...(b.morning.some(Boolean) ? [["朝活動", ...b.morning]] : []),
-    ];
-    PERIODS.forEach((p, pi) => {
-      rows.push([`${p} 教科`, ...b.cells.map((day) => day[pi].subject)]);
-      rows.push([`${p} 内容`, ...b.cells.map((day) => day[pi].content)]);
-      rows.push([`${p} 担当`, ...b.cells.map((day) => day[pi].staff)]);
-    });
-    if (b.notice) rows.push(["連絡等", b.notice, "", "", "", ""]);
-    return { title: `${b.className}（${b.studentNames.join("・")}）`, header, rows };
-  });
+// 交流ブロック表で太罫にする行の判定（見出し・曜日・朝活動・各時限の担当・連絡等）
+export function isExchangeSepRow(firstCell: string): boolean {
+  return (
+    firstCell === "" ||
+    firstCell === "曜日" ||
+    firstCell === "朝活動" ||
+    firstCell === "連絡等" ||
+    /^\d+ 担当$/.test(firstCell)
+  );
 }
 
 // 削除時の参照整理。壊れた参照を落とし、現行データを守る。
-export function detachClassFromStudents(students: Student[], classId: string): { students: Student[]; changed: boolean } {
-  let changed = false;
-  const next = students.map((s) => {
-    if (s.exchangeClassId !== classId) return s;
-    changed = true;
-    return { ...s, exchangeClassId: null, exchangeSlots: [] };
-  });
-  return { students: next, changed };
-}
 
 export function detachStudentFromWeeks(weeks: WeekPlan[], studentId: string): { weeks: WeekPlan[]; changed: boolean } {
   let changed = false;
@@ -273,6 +253,16 @@ export function detachStudentFromWeeks(weeks: WeekPlan[], studentId: string): { 
     return { ...w, cells, updatedAt: Date.now() };
   });
   return { weeks: next, changed };
+}
+
+export function detachClassFromStudents(students: Student[], classId: string): { students: Student[]; changed: boolean } {
+  let changed = false;
+  const next = students.map((s) => {
+    if (s.exchangeClassId !== classId) return s;
+    changed = true;
+    return { ...s, exchangeClassId: null, exchangeSlots: [] };
+  });
+  return { students: next, changed };
 }
 
 export function detachAideFromWeeks(weeks: WeekPlan[], aideId: string): { weeks: WeekPlan[]; changed: boolean } {

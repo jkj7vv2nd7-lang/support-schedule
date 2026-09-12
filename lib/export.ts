@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
-import { addDays, classBlockTables, formatWeek } from "@/lib/schedule";
+import { addDays, daySections, formatWeek } from "@/lib/schedule";
 
 export type WeekExportInput = {
   week: WeekPlan;
@@ -168,10 +168,10 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
   if (layouts.exchange) {
     const ws3 = wb.addWorksheet("交流クラス別");
     ws3.addRow([title]);
-    for (const t of classBlockTables(input)) {
+    for (const sec of daySections(input)) {
       ws3.addRow([]);
-      ws3.addRow([t.title]).font = { bold: true, size: 12 };
-      putTable(ws3, t.header, t.rows);
+      ws3.addRow([`${sec.weekday}（${sec.date}）`]).font = { bold: true, size: 12 };
+      putTable(ws3, ["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells]));
     }
   }
   if (layouts.aides) {
@@ -263,10 +263,10 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     children.push(
       new Paragraph({ children: [new TextRun({ text: "交流クラス別", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
     );
-    for (const t of classBlockTables(input)) {
+    for (const sec of daySections(input)) {
       children.push(
-        new Paragraph({ children: [new TextRun({ text: t.title, bold: true, size: 18, font: FONT })], spacing: { before: 120, after: 60 } }),
-        docxTable(t.header, t.rows),
+        new Paragraph({ children: [new TextRun({ text: `${sec.weekday}（${sec.date}）`, bold: true, size: 18, font: FONT })], spacing: { before: 120, after: 60 } }),
+        docxTable(["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells])),
       );
     }
   }
@@ -436,9 +436,9 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
   if (layouts.exchange) {
     needBreak();
     pdfText(c, "交流クラス別", 11, 2);
-    for (const t of classBlockTables(input)) {
-      pdfText(c, t.title, 10, 2);
-      pdfTable(c, t.header, t.rows.map((r) => r.map((x) => x.replace(/\n/g, "／"))));
+    for (const sec of daySections(input)) {
+      pdfText(c, `${sec.weekday}（${sec.date}）`, 10, 2);
+      pdfTable(c, ["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells].map((x) => x.replace(/\n/g, "／"))));
     }
   }
   if (layouts.aides) {

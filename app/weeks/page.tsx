@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classBlockTables, formatWeek, mondayOf } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, daySections, formatWeek, mondayOf } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -599,22 +599,22 @@ function WeekPrint({
           </div>
           ) : null}
           {layouts.exchange
-            ? classBlockTables({ week: w, students, aides, classes }).map((t, ti, arr) => (
-                <div key={ti} className={ti < arr.length - 1 ? "break-after-page" : undefined}>
-                  <h3 className="mt-6 text-sm font-bold">{ti === 0 ? "交流クラス別一覧" : "交流クラス別一覧（続き）"}</h3>
-                  <p className="mt-1 text-sm font-bold">{t.title}</p>
+            ? daySections({ week: w, students, aides, classes }).map((sec, si) => (
+                <div key={si} className={si < 5 ? "break-after-page" : undefined}>
+                  <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
+                  <p className="mt-1 text-sm font-bold">{sec.weekday}（${sec.date}）</p>
                   <table className="mt-1 w-full border-collapse text-xs">
                     <thead>
                       <tr>
-                        {t.header.map((h, hi) => (
+                        {["クラス", ...PERIODS.map((p) => `${p}時限`)].map((h, hi) => (
                           <th key={hi} className="border px-1 py-1">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {t.rows.map((row, ri) => (
+                      {sec.rows.map((row, ri) => (
                         <tr key={ri}>
-                          {row.map((cell, ci) => (
+                          {["クラス", ...row.cells].map((cell, ci) => (
                             <td key={ci} className="border px-1 py-1 align-top">
                               {cell.split("\n").map((line, li) => (
                                 <span key={li} className="block">{line || " "}</span>
