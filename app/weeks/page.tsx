@@ -312,32 +312,39 @@ function WeekPrint({
   return (
     <div className="hidden print:block">
       {weeks.map((w) => (
-        <div key={w.id} className="break-after-page">
-          <h2 className="text-lg font-bold">
-            週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
-          </h2>
+        <div key={w.id}>
           {students
             .filter((s) => w.cells[s.id])
-            .map((s) => (
-              <div key={s.id} className="mt-4">
-                <h3 className="text-sm font-bold">{s.name}</h3>
+            .map((s, si) => (
+              <div key={s.id} className="break-after-page">
+                {si === 0 ? (
+                  <h2 className="text-lg font-bold">
+                    週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
+                  </h2>
+                ) : null}
+                <h3 className="mt-4 text-sm font-bold">{s.name}</h3>
                 <table className="mt-1 w-full border-collapse text-xs">
                   <thead>
                     <tr>
-                      <th className="border px-1 py-1">時限</th>
-                      {DAYS.map((d) => (
-                        <th key={d} className="border px-1 py-1">{d}</th>
+                      <th className="w-14 border px-1 py-1">曜日</th>
+                      {PERIODS.map((p) => (
+                        <th key={p} className="border px-1 py-1">{p}時限</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {PERIODS.map((p) => (
-                      <tr key={p}>
-                        <td className="border px-1 py-1 text-center font-bold">{p}</td>
-                        {DAYS.map((_, d) => {
-                          const c = w.cells[s.id]?.[slotKey(d, p)];
+                    {DAYS.map((d, day) => (
+                      <tr key={d}>
+                        <td className="border px-1 py-1 text-center font-bold">
+                          {d}
+                          <span className="block text-[10px] font-normal text-zinc-500">
+                            {addDays(w.weekStart, day).slice(5).replace("-", "/")}
+                          </span>
+                        </td>
+                        {PERIODS.map((p) => {
+                          const c = w.cells[s.id]?.[slotKey(day, p)];
                           return (
-                            <td key={d} className="border px-1 py-1 align-top">
+                            <td key={p} className="border px-1 py-1 align-top">
                               <span className="font-bold">[{c?.place === "exchange" ? "交流" : "支援"}] {c?.subject}</span>
                               {c?.content ? <span className="block">{c.content}</span> : null}
                               <span className="block text-zinc-500">
@@ -352,41 +359,49 @@ function WeekPrint({
                 </table>
               </div>
             ))}
-          <h3 className="mt-6 text-sm font-bold">全体一覧（介助員）</h3>
-          {DAYS.map((d, day) => (
-            <div key={d} className="mt-2">
-              <h4 className="text-xs font-bold">{d}曜日（{addDays(w.weekStart, day).slice(5).replace("-", "/")}）</h4>
-              <table className="mt-1 w-full border-collapse text-xs">
-                <thead>
-                  <tr>
-                    <th className="border px-1 py-1">児童</th>
-                    {PERIODS.map((p) => (
-                      <th key={p} className="border px-1 py-1">{p}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {students
-                    .filter((s) => w.cells[s.id])
-                    .map((s) => (
-                      <tr key={s.id}>
-                        <td className="border px-1 py-1 font-bold">{s.name}</td>
-                        {PERIODS.map((p) => {
-                          const c = w.cells[s.id]?.[slotKey(day, p)];
-                          return (
-                            <td key={p} className="border px-1 py-1">
-                              {c?.place === "exchange" ? "交流" : ""}{c?.subject}
-                              {c?.aideId ? `（${aideById.get(c.aideId) ?? ""}）` : ""}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-          <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
+          <div className="break-after-page">
+            <h3 className="mt-6 text-sm font-bold">全体一覧（介助員）</h3>
+            <table className="mt-1 w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className="w-14 border px-1 py-1">曜日</th>
+                  <th className="w-20 border px-1 py-1">児童</th>
+                  {PERIODS.map((p) => (
+                    <th key={p} className="border px-1 py-1">{p}時限</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {DAYS.flatMap((d, day) => {
+                  const rows = students.filter((s) => w.cells[s.id]);
+                  return rows.map((s, ri) => (
+                    <tr key={`${day}-${s.id}`}>
+                      {ri === 0 ? (
+                        <td rowSpan={rows.length} className="border px-1 py-1 text-center font-bold">
+                          {d}
+                          <span className="block text-[10px] font-normal text-zinc-500">
+                            {addDays(w.weekStart, day).slice(5).replace("-", "/")}
+                          </span>
+                        </td>
+                      ) : null}
+                      <td className="border px-1 py-1 font-bold">{s.name}</td>
+                      {PERIODS.map((p) => {
+                        const c = w.cells[s.id]?.[slotKey(day, p)];
+                        return (
+                          <td key={p} className="border px-1 py-1">
+                            {c?.place === "exchange" ? "交流" : ""}{c?.subject}
+                            {c?.aideId ? `（${aideById.get(c.aideId) ?? ""}）` : ""}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ));
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
           <table className="mt-1 w-full border-collapse text-xs">
             <thead>
               <tr>
@@ -478,6 +493,7 @@ function WeekPrint({
               })}
             </tbody>
           </table>
+          </div>
         </div>
       ))}
     </div>
