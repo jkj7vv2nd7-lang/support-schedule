@@ -52,7 +52,7 @@ function SlotGrid({
                       onClick={() => onToggle(d, p)}
                       className={`flex h-9 w-full flex-col items-center justify-center rounded-lg border text-[10px] leading-tight transition-colors ${
                         on
-                          ? "border-teal-600 bg-teal-50 font-bold text-teal-800"
+                          ? "border-blue-600 bg-blue-50 font-bold text-blue-800"
                           : "border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300"
                       }`}
                     >
@@ -228,7 +228,7 @@ export default function PeoplePage() {
               onChange={(e) => setSNotes(e.target.value)}
               rows={2}
               placeholder="例：ナッツアレルギーあり。初めての場所では緊張するため声かけを"
-              className="min-h-[56px] w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed placeholder:text-zinc-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20"
+              className="min-h-[56px] w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed placeholder:text-zinc-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
             />
           </label>
         </div>

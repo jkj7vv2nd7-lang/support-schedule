@@ -22,10 +22,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ja" className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-[#f4f6f4] text-zinc-900">
-        <header className="no-print sticky top-0 z-20 bg-gradient-to-r from-teal-800 via-teal-700 to-emerald-600 text-white shadow-md">
+        <header className="no-print sticky top-0 z-20 bg-gradient-to-r from-blue-800 via-blue-700 to-indigo-600 text-white shadow-md">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-2 px-3 sm:px-4">
             <Link href="/" className="flex min-w-0 items-center gap-2">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-sm font-bold text-teal-700 shadow">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-sm font-bold text-blue-700 shadow">
                 予
               </span>
               <span className="hidden min-w-0 truncate text-sm font-semibold tracking-wide sm:inline">

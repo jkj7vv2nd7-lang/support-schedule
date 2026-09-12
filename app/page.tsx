@@ -25,13 +25,13 @@ const STEPS = [
 export default function HomePage() {
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-800 via-teal-700 to-emerald-600 p-8 text-white shadow-lg sm:p-10">
-        <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-emerald-300/25 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-teal-200/20 blur-3xl" />
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-800 via-blue-700 to-indigo-600 p-8 text-white shadow-lg sm:p-10">
+        <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-indigo-300/25 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-blue-200/20 blur-3xl" />
         <h1 className="relative text-2xl font-bold leading-snug sm:text-3xl">
           特別支援学級の週予定づくりを時短
         </h1>
-        <p className="relative mt-3 max-w-2xl text-sm leading-relaxed text-teal-50/90 sm:text-base">
+        <p className="relative mt-3 max-w-2xl text-sm leading-relaxed text-blue-50/90 sm:text-base">
           交流クラスの時間割をもとに、支援児童ごとの週予定表をすばやく作成・印刷できます。
         </p>
       </div>
@@ -39,7 +39,7 @@ export default function HomePage() {
         {STEPS.map((s) => (
           <Link key={s.href} href={s.href}>
             <Card className="h-full transition-shadow hover:shadow-md">
-              <p className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-sm font-bold text-white">
+              <p className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
                 {s.no}
               </p>
               <h2 className="mt-2 text-base font-bold">{s.title}</h2>

@@ -201,7 +201,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
   const putTable = (ws: ExcelJS.Worksheet, header: string[], rows: string[][]) => {
     const h = ws.addRow(header);
     h.font = { bold: true };
-    h.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDE8E4" } };
+    h.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDBEAFE" } };
     for (const r of rows) {
       const row = ws.addRow(r);
       row.alignment = { vertical: "top", wrapText: true };
@@ -260,7 +260,7 @@ function docxTable(header: string[], rows: string[][]) {
   const cell = (text: string, isHeader: boolean, w: number) =>
     new TableCell({
       width: { size: widths[w] ?? even, type: WidthType.PERCENTAGE },
-      shading: isHeader ? { type: "clear", fill: "DDE8E4", color: "auto" } : undefined,
+      shading: isHeader ? { type: "clear", fill: "DBEAFE", color: "auto" } : undefined,
       children: [
         new Paragraph({
           children: [new TextRun({ text: text || " ", bold: isHeader, size: 16, font: FONT })],
@@ -431,11 +431,11 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][]) {
       const w = widths[i] ?? c.usable / colCount;
       if (isHeader) {
         c.doc.save();
-        c.doc.rect(x, sy, w, h).fill("#DDE8E4");
+        c.doc.rect(x, sy, w, h).fill("#DBEAFE");
         c.doc.restore();
       }
       c.doc.rect(x, sy, w, h).stroke("#BBBBBB");
-      c.doc.fillColor(isHeader ? "#0B3B36" : "#1F1F1F");
+      c.doc.fillColor(isHeader ? "#1E3A8A" : "#1F1F1F");
       wrap(txt, i).forEach((line, li) => c.doc.text(line, x + pad, sy + pad + li * lineH, { width: w - pad * 2 }));
       x += w;
     });

@@ -11,7 +11,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
 export function StepHeading({ step, children }: { step: string; children: ReactNode }) {
   return (
     <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900">
-      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-sm font-bold text-white">
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
         {step}
       </span>
       {children}
@@ -20,7 +20,7 @@ export function StepHeading({ step, children }: { step: string; children: ReactN
 }
 
 const inputBase =
-  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20 disabled:bg-zinc-100";
+  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 disabled:bg-zinc-100";
 
 export function TextInput({ inputRef, ...props }: InputHTMLAttributes<HTMLInputElement> & { inputRef?: Ref<HTMLInputElement> }) {
   return <input ref={inputRef} {...props} className={`${inputBase} ${props.className ?? ""}`} />;
@@ -40,24 +40,24 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Btn({ variant = "primary", className = "", ...props }: BtnProps) {
   const styles = {
-    primary: "bg-teal-600 text-white hover:bg-teal-500",
+    primary: "bg-blue-600 text-white hover:bg-blue-500",
     secondary: "border border-zinc-300 bg-white text-zinc-800 shadow-sm hover:border-zinc-400 hover:bg-zinc-50",
     danger: "bg-red-500 text-white hover:bg-red-400",
   } as const;
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
     />
   );
 }
 
-export function Notice({ children, tone = "zinc" }: { children: ReactNode; tone?: "zinc" | "amber" | "red" | "teal" }) {
+export function Notice({ children, tone = "zinc" }: { children: ReactNode; tone?: "zinc" | "amber" | "red" | "blue" }) {
   const tones = {
     zinc: "border-zinc-200 bg-zinc-100/70 text-zinc-700",
     amber: "border-amber-200 bg-amber-50 text-amber-800",
     red: "border-red-200 bg-red-50 text-red-700",
-    teal: "border-teal-200 bg-teal-50 text-teal-800",
+    blue: "border-blue-200 bg-blue-50 text-blue-800",
   };
   return <div className={`rounded-lg border px-3 py-2 text-sm ${tones[tone]}`}>{children}</div>;
 }

@@ -179,10 +179,10 @@ export default function ClassesPage() {
             <Btn variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
               {busy ? "読込中…" : "時間割の写真から読む"}
             </Btn>
-            {busy ? <span className="text-xs text-teal-700">AIが読み取っています…</span> : null}
+            {busy ? <span className="text-xs text-blue-700">AIが読み取っています…</span> : null}
           </div>
           {error ? <div className="mt-3"><Notice tone="red">{error}</Notice></div> : null}
-          {message ? <div className="mt-3"><Notice tone="teal">{message}</Notice></div> : null}
+          {message ? <div className="mt-3"><Notice tone="blue">{message}</Notice></div> : null}
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
@@ -203,13 +203,13 @@ export default function ClassesPage() {
                           value={table[d][p - 1].subject}
                           onChange={(e) => setCell(d, p, "subject", e.target.value)}
                           placeholder="教科"
-                          className="w-full rounded border border-transparent px-1 py-0.5 text-xs font-bold focus:border-teal-500 focus:outline-none"
+                          className="w-full rounded border border-transparent px-1 py-0.5 text-xs font-bold focus:border-blue-500 focus:outline-none"
                         />
                         <input
                           value={table[d][p - 1].content}
                           onChange={(e) => setCell(d, p, "content", e.target.value)}
                           placeholder="内容"
-                          className="mt-0.5 w-full rounded border border-transparent px-1 py-0.5 text-[11px] text-zinc-500 focus:border-teal-500 focus:outline-none"
+                          className="mt-0.5 w-full rounded border border-transparent px-1 py-0.5 text-[11px] text-zinc-500 focus:border-blue-500 focus:outline-none"
                         />
                       </td>
                     ))}

@@ -253,12 +253,12 @@ export default function WeeksPage() {
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-zinc-400">児童：</span>
                           {students.map((s) => (
-                            <label key={s.id} className="flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs has-checked:border-teal-600 has-checked:bg-teal-50">
+                            <label key={s.id} className="flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs has-checked:border-blue-600 has-checked:bg-blue-50">
                               <input
                                 type="checkbox"
                                 checked={post?.studentIds.includes(s.id) ?? false}
                                 onChange={(e) => setPost(open.id, a.id, "studentIds", s.id, e.target.checked)}
-                                className="h-3.5 w-3.5 rounded border-zinc-300 text-teal-600 focus:ring-teal-600/20"
+                                className="h-3.5 w-3.5 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
                               />
                               {s.name}
                             </label>
@@ -267,12 +267,12 @@ export default function WeeksPage() {
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-zinc-400">交流：</span>
                           {classes.map((c) => (
-                            <label key={c.id} className="flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs has-checked:border-teal-600 has-checked:bg-teal-50">
+                            <label key={c.id} className="flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs has-checked:border-blue-600 has-checked:bg-blue-50">
                               <input
                                 type="checkbox"
                                 checked={post?.classIds.includes(c.id) ?? false}
                                 onChange={(e) => setPost(open.id, a.id, "classIds", c.id, e.target.checked)}
-                                className="h-3.5 w-3.5 rounded border-zinc-300 text-teal-600 focus:ring-teal-600/20"
+                                className="h-3.5 w-3.5 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
                               />
                               {c.name}
                             </label>
@@ -297,7 +297,7 @@ export default function WeeksPage() {
                         type="checkbox"
                         checked={layouts[l.key]}
                         onChange={() => toggleLayout(l.key)}
-                        className="h-4 w-4 rounded border-zinc-300 text-teal-600 focus:ring-teal-600/20"
+                        className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
                       />
                       {l.label}
                     </label>
@@ -312,7 +312,7 @@ export default function WeeksPage() {
                       onClick={() => { setActiveStudent(s.id); setSel(null); }}
                       className={`rounded-lg border-2 px-3 py-1.5 text-sm font-bold transition-colors ${
                         openStudentId === s.id
-                          ? "border-teal-600 bg-teal-50 text-teal-800"
+                          ? "border-blue-600 bg-blue-50 text-blue-800"
                           : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
                       }`}
                     >
@@ -373,7 +373,7 @@ export default function WeeksPage() {
                                     type="button"
                                     onClick={() => setSel(active ? null : { sid: openStudentId, key })}
                                     className={`block w-full rounded-lg border p-1.5 text-left transition-colors ${
-                                      active ? "border-teal-600 bg-teal-50" : "border-transparent hover:border-zinc-300"
+                                      active ? "border-blue-600 bg-blue-50" : "border-transparent hover:border-zinc-300"
                                     } ${absent ? "bg-zinc-100" : cell?.place === "exchange" ? "bg-sky-50/60" : ""}`}
                                   >
                                     {absent ? (
@@ -400,7 +400,7 @@ export default function WeeksPage() {
                   </div>
                 ) : null}
                 {sel && selCell ? (
-                  <Card className="border-teal-200 bg-teal-50/40">
+                  <Card className="border-blue-200 bg-blue-50/40">
                     <p className="text-sm font-bold">
                       {studentById.get(sel.sid)?.name} ／ {DAYS[Number(sel.key.split("-")[0])]}曜 {sel.key.split("-")[1]}時限
                     </p>
