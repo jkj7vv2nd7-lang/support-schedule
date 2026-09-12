@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Btn, Card, Field, Notice, Select, StepHeading } from "@/components/ui";
 import {
   DAYS,
@@ -385,77 +386,98 @@ function WeekPrint({
               </table>
             </div>
           ))}
-          <h3 className="mt-6 text-sm font-bold">交流クラス別一覧（曜日ごと）</h3>
-          {DAYS.map((d, day) => (
-            <div key={d} className="mt-2 break-inside-avoid">
-              <h4 className="text-xs font-bold">{d}曜日（{addDays(w.weekStart, day).slice(5).replace("-", "/")}）</h4>
-              <table className="mt-1 w-full border-collapse text-xs">
-                <thead>
-                  <tr>
-                    <th className="w-10 border px-1 py-1">時限</th>
-                    {classes.map((c) => (
-                      <th key={c.id} className="border px-1 py-1">{c.name}</th>
-                    ))}
-                    <th className="border px-1 py-1">支援学級</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {PERIODS.map((p) => {
-                    const key = slotKey(day, p);
-                    return (
-                      <tr key={p}>
-                        <td className="border px-1 py-1 text-center font-bold">{p}</td>
-                        {classes.map((cls) => {
-                          const inClass = students.filter((s) => {
+          <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
+          <table className="mt-1 w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="w-12 border px-1 py-1">曜日</th>
+                <th className="w-24 border px-1 py-1">クラス</th>
+                {PERIODS.map((p) => (
+                  <th key={p} className="border px-1 py-1">{p}時限</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {DAYS.flatMap((d, day) => {
+                const rows: { key: string; label: ReactNode; cells: (p: number) => ReactNode }[] = [
+                  ...classes.map((cls) => ({
+                    key: `c-${cls.id}`,
+                    label: <span className="font-bold">{cls.name}</span>,
+                    cells: (p: number) => {
+                      const key = slotKey(day, p);
+                      const inClass = students.filter((s) => {
+                        const c = w.cells[s.id]?.[key];
+                        if (!c || c.place !== "exchange") return false;
+                        return (c.classId ?? s.exchangeClassId) === cls.id;
+                      });
+                      if (inClass.length === 0) return <span className="text-zinc-400">―</span>;
+                      const slot = cls.timetable[day]?.[p - 1];
+                      const subj = slot?.subject || inClass.map((s) => w.cells[s.id]?.[key]?.subject ?? "").find(Boolean) || "";
+                      const cont = slot?.content || inClass.map((s) => w.cells[s.id]?.[key]?.content ?? "").find(Boolean) || "";
+                      const staff = Array.from(
+                        new Set(
+                          inClass.flatMap((s) => {
                             const c = w.cells[s.id]?.[key];
-                            if (!c || c.place !== "exchange") return false;
-                            return (c.classId ?? s.exchangeClassId) === cls.id;
-                          });
-                          if (inClass.length === 0) {
-                            return <td key={cls.id} className="border px-1 py-1 text-zinc-400">―</td>;
-                          }
-                          const slot = cls.timetable[day]?.[p - 1];
-                          const subj = slot?.subject || inClass.map((s) => w.cells[s.id]?.[key]?.subject ?? "").find(Boolean) || "";
-                          const cont = slot?.content || inClass.map((s) => w.cells[s.id]?.[key]?.content ?? "").find(Boolean) || "";
-                          const staff = Array.from(
-                            new Set(
-                              inClass.flatMap((s) => {
-                                const c = w.cells[s.id]?.[key];
-                                return [c?.teacher ?? "", c?.aideId ? (aideById.get(c.aideId) ?? "") : ""];
-                              }).filter(Boolean),
-                            ),
-                          ).join("・");
-                          return (
-                            <td key={cls.id} className="border px-1 py-1 align-top">
-                              <span className="font-bold">{inClass.map((s) => s.name).join("・")}</span>
-                              {subj ? <span className="block">{subj}{cont ? `：${cont}` : ""}</span> : null}
-                              {staff ? <span className="block text-zinc-500">{staff}</span> : null}
-                            </td>
-                          );
-                        })}
-                        <td className="border px-1 py-1 align-top">
-                          {students
-                            .filter((s) => {
-                              const c = w.cells[s.id]?.[key];
-                              return c && c.place !== "exchange";
-                            })
-                            .map((s) => {
-                              const c = w.cells[s.id]?.[key];
-                              return (
-                                <span key={s.id} className="block">
-                                  <span className="font-bold">{s.name}</span>
-                                  {c?.subject ? `：${c.subject}` : ""}
-                                </span>
-                              );
-                            })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ))}
+                            return [c?.teacher ?? "", c?.aideId ? (aideById.get(c.aideId) ?? "") : ""];
+                          }).filter(Boolean),
+                        ),
+                      ).join("・");
+                      return (
+                        <>
+                          <span className="font-bold">{inClass.map((s) => s.name).join("・")}</span>
+                          {subj ? <span className="block">{subj}{cont ? `：${cont}` : ""}</span> : null}
+                          {staff ? <span className="block text-zinc-500">{staff}</span> : null}
+                        </>
+                      );
+                    },
+                  })),
+                  {
+                    key: "support",
+                    label: <span className="font-bold">支援学級</span>,
+                    cells: (p: number) => {
+                      const key = slotKey(day, p);
+                      const inRoom = students.filter((s) => {
+                        const c = w.cells[s.id]?.[key];
+                        return c && c.place !== "exchange";
+                      });
+                      if (inRoom.length === 0) return <span className="text-zinc-400">―</span>;
+                      return (
+                        <>
+                          {inRoom.map((s) => {
+                            const c = w.cells[s.id]?.[key];
+                            return (
+                              <span key={s.id} className="block">
+                                <span className="font-bold">{s.name}</span>
+                                {c?.subject ? `：${c.subject}` : ""}
+                              </span>
+                            );
+                          })}
+                        </>
+                      );
+                    },
+                  },
+                ];
+                return rows.map((r, ri) => (
+                  <tr key={`${day}-${r.key}`}>
+                    {ri === 0 ? (
+                      <td rowSpan={rows.length} className="border px-1 py-1 text-center font-bold">
+                        {d}
+                        <span className="block text-[10px] font-normal text-zinc-500">
+                          {addDays(w.weekStart, day).slice(5).replace("-", "/")}
+                        </span>
+                      </td>
+                    ) : null}
+                    <td className="border px-1 py-1 align-top">{r.label}</td>
+                    {PERIODS.map((p) => (
+                      <td key={p} className="border px-1 py-1 align-top">
+                        {r.cells(p)}
+                      </td>
+                    ))}
+                  </tr>
+                ));
+              })}
+            </tbody>
+          </table>
         </div>
       ))}
     </div>
