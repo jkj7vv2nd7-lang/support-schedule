@@ -1,4 +1,5 @@
 import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, normalizeLayouts, sanitizeFileName } from "@/lib/export";
+import { buildWeekCells } from "@/lib/schedule";
 import { isValidAide, isValidClass, isValidStudent, isValidWeek } from "@/lib/storage";
 import { checkContentLength } from "@/lib/api-guard";
 
@@ -53,7 +54,9 @@ export async function POST(request: Request) {
     if (!layouts.sheets && !layouts.overview && !layouts.exchange && !layouts.aides) {
       return Response.json({ ok: false, error: "出力する表を1つ以上選んでください" }, { status: 400 });
     }
-    const input = { week, students, aides, classes };
+    // 登録後に追加された児童などのセル欠落を補完
+    const fullCells = buildWeekCells(students, classes, week.cells);
+    const input = { week: { ...week, cells: fullCells }, students, aides, classes };
     const buffer =
       format === "pdf" ? await buildWeekPdf(input, layouts) : format === "xlsx" ? await buildWeekXlsx(input, layouts) : await buildWeekDocx(input, layouts);
     const base = sanitizeFileName(`週予定表${week.weekStart}`);

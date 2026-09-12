@@ -80,7 +80,9 @@ export default function WeeksPage() {
 
   function updateCells(weekId: string, fn: (cells: WeekPlan["cells"]) => WeekPlan["cells"]) {
     persist(
-      weeks.map((w) => (w.id === weekId ? { ...w, cells: fn(w.cells), updatedAt: Date.now() } : w)),
+      weeks.map((w) =>
+        w.id === weekId ? { ...w, cells: fn(buildWeekCells(students, classes, w.cells)), updatedAt: Date.now() } : w,
+      ),
     );
   }
 
@@ -121,6 +123,8 @@ export default function WeeksPage() {
     persist(
       weeks.map((w) => {
         if (w.id !== weekId) return w;
+        const merged = buildWeekCells(students, classes, w.cells);
+        if (!merged[sid]) return w;
         const days = [...(w.absent?.[sid] ?? [])];
         const idx = days.indexOf(day);
         if (idx >= 0) days.splice(idx, 1);
@@ -128,14 +132,13 @@ export default function WeeksPage() {
         const absent = { ...(w.absent ?? {}) };
         if (days.length > 0) absent[sid] = days.sort();
         else delete absent[sid];
-        const bySlot = { ...(w.cells[sid] ?? {}) };
+        const bySlot = { ...merged[sid] };
         for (const [key, cell] of Object.entries(bySlot)) {
           if (Number(key.split("-")[0]) === day && cell.aideId) {
             bySlot[key] = { ...cell, aideId: null };
           }
         }
-        const cells = { ...w.cells, [sid]: bySlot };
-        return { ...w, absent, cells, updatedAt: Date.now() };
+        return { ...w, absent, cells: { ...merged, [sid]: bySlot }, updatedAt: Date.now() };
       }),
     );
   }
@@ -153,7 +156,9 @@ export default function WeeksPage() {
     }));
   }
 
-  const open = weeks.find((w) => w.id === openId) ?? null;
+  const openRaw = weeks.find((w) => w.id === openId) ?? null;
+  // 後から登録された児童などのセル欠落を表示時に補完する（保存は編集時に行われる）
+  const open = openRaw ? { ...openRaw, cells: buildWeekCells(students, classes, openRaw.cells) } : null;
   const openStudentId = activeStudent && studentById.has(activeStudent) ? activeStudent : (students[0]?.id ?? "");
   const selCell = open && sel ? open.cells[sel.sid]?.[sel.key] : undefined;
 
