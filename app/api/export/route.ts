@@ -1,4 +1,4 @@
-import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, sanitizeFileName } from "@/lib/export";
+import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, normalizeLayouts, sanitizeFileName } from "@/lib/export";
 import { isValidAide, isValidClass, isValidStudent, isValidWeek } from "@/lib/storage";
 import { checkContentLength } from "@/lib/api-guard";
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ ok: false, error: "リクエストの形式が不正です" }, { status: 400 });
   }
-  const { format, data } = (body ?? {}) as { format?: string; data?: unknown };
+  const { format, data, layouts: rawLayouts } = (body ?? {}) as { format?: string; data?: unknown; layouts?: unknown };
   if (format !== "pdf" && format !== "xlsx" && format !== "docx") {
     return Response.json({ ok: false, error: "出力形式は pdf / xlsx / docx を指定してください" }, { status: 400 });
   }
@@ -49,9 +49,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    const layouts = normalizeLayouts(rawLayouts);
+    if (!layouts.sheets && !layouts.overview && !layouts.exchange) {
+      return Response.json({ ok: false, error: "出力する表を1つ以上選んでください" }, { status: 400 });
+    }
     const input = { week, students, aides, classes };
     const buffer =
-      format === "pdf" ? await buildWeekPdf(input) : format === "xlsx" ? await buildWeekXlsx(input) : await buildWeekDocx(input);
+      format === "pdf" ? await buildWeekPdf(input, layouts) : format === "xlsx" ? await buildWeekXlsx(input, layouts) : await buildWeekDocx(input, layouts);
     const base = sanitizeFileName(`週予定表${week.weekStart}`);
     const fileName = `${base}.${format}`;
     const asciiFallback = base.replace(/[^\x20-\x7E]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").trim() || "schedule";

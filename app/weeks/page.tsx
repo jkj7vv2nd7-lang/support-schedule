@@ -33,6 +33,12 @@ export default function WeeksPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeStudent, setActiveStudent] = useState<string>("");
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
+  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true });
+  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange;
+
+  function toggleLayout(key: "sheets" | "overview" | "exchange") {
+    setLayouts((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   const aideById = new Map(aides.map((a) => [a.id, a]));
   const studentById = new Map(students.map((s) => [s.id, s]));
@@ -173,10 +179,30 @@ export default function WeeksPage() {
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => runAutoAssign(open)}>
                     介助員を自動割付
                   </Btn>
-                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => window.print()}>
-                    印刷（児童別・全体・交流別）
+                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => window.print()}>
+                    印刷する
                   </Btn>
-                  <ExportButtons week={open} students={students} aides={aides} classes={classes} onError={setError} />
+                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs font-bold text-zinc-600">出力する表：</span>
+                  {(
+                    [
+                      { key: "sheets", label: "児童別" },
+                      { key: "overview", label: "全体一覧" },
+                      { key: "exchange", label: "交流クラス別" },
+                    ] as const
+                  ).map((l) => (
+                    <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
+                      <input
+                        type="checkbox"
+                        checked={layouts[l.key]}
+                        onChange={() => toggleLayout(l.key)}
+                        className="h-4 w-4 rounded border-zinc-300 text-teal-600 focus:ring-teal-600/20"
+                      />
+                      {l.label}
+                    </label>
+                  ))}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
@@ -295,7 +321,7 @@ export default function WeeksPage() {
               </div>
             ) : null}
 
-            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} /> : null}
+            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} /> : null}
           </Card>
         );
       })}
@@ -303,26 +329,32 @@ export default function WeeksPage() {
   );
 }
 
+export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean };
+
 function WeekPrint({
   weeks,
   students,
   aides,
   classes,
+  layouts,
 }: {
   weeks: WeekPlan[];
   students: Student[];
   aides: Aide[];
   classes: ExchangeClass[];
+  layouts: PrintLayouts;
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
+  const laterAfterSheets = (hasMoreSheets: boolean) => hasMoreSheets || layouts.overview || layouts.exchange;
   return (
     <div className="hidden print:block">
-      {weeks.map((w) => (
-        <div key={w.id}>
-          {students
-            .filter((s) => w.cells[s.id])
-            .map((s, si) => (
-              <div key={s.id} className="break-after-page">
+      {weeks.map((w) => {
+        const sheetStudents = students.filter((s) => w.cells[s.id]);
+        return (
+          <div key={w.id}>
+            {layouts.sheets
+              ? sheetStudents.map((s, si) => (
+                  <div key={s.id} className={laterAfterSheets(si < sheetStudents.length - 1) ? "break-after-page" : undefined}>
                 {si === 0 ? (
                   <h2 className="text-lg font-bold">
                     週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
@@ -364,8 +396,10 @@ function WeekPrint({
                   </tbody>
                 </table>
               </div>
-            ))}
-          <div className="break-after-page">
+            ))
+          : null}
+          {layouts.overview ? (
+            <div className={layouts.exchange ? "break-after-page" : undefined}>
             <h3 className="mt-6 text-sm font-bold">全体一覧（介助員）</h3>
             <table className="mt-1 w-full border-collapse text-xs">
               <thead>
@@ -406,6 +440,8 @@ function WeekPrint({
               </tbody>
             </table>
           </div>
+          ) : null}
+          {layouts.exchange ? (
           <div>
             <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
           <table className="mt-1 w-full border-collapse text-xs">
@@ -500,8 +536,10 @@ function WeekPrint({
             </tbody>
           </table>
           </div>
+          ) : null}
         </div>
-      ))}
+      );
+    })}
     </div>
   );
 }

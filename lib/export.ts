@@ -13,6 +13,17 @@ export type WeekExportInput = {
   classes: ExchangeClass[];
 };
 
+export type WeekExportLayouts = { sheets: boolean; overview: boolean; exchange: boolean };
+
+export function normalizeLayouts(v: unknown): WeekExportLayouts {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  return {
+    sheets: o.sheets !== false,
+    overview: o.overview !== false,
+    exchange: o.exchange !== false,
+  };
+}
+
 export function sanitizeFileName(name: unknown): string {
   const src = typeof name === "string" ? name : "";
   const clean = src
@@ -132,7 +143,7 @@ function exchangeRows(input: WeekExportInput): { header: string[]; rows: string[
 
 /* ============================== Excel ============================== */
 
-export async function buildWeekXlsx(input: WeekExportInput): Promise<Buffer> {
+export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const putTable = (ws: ExcelJS.Worksheet, header: string[], rows: string[][]) => {
@@ -149,21 +160,27 @@ export async function buildWeekXlsx(input: WeekExportInput): Promise<Buffer> {
   };
   const ws1 = wb.addWorksheet("児童別");
   ws1.addRow([title]);
-  for (const s of input.students) {
-    const sheet = studentSheet(input, s.id);
-    if (!sheet) continue;
-    ws1.addRow([]);
-    ws1.addRow([sheet.title]).font = { bold: true, size: 12 };
-    putTable(ws1, sheet.header, sheet.rows);
+  if (layouts.sheets) {
+    for (const s of input.students) {
+      const sheet = studentSheet(input, s.id);
+      if (!sheet) continue;
+      ws1.addRow([]);
+      ws1.addRow([sheet.title]).font = { bold: true, size: 12 };
+      putTable(ws1, sheet.header, sheet.rows);
+    }
   }
-  const ws2 = wb.addWorksheet("全体一覧");
-  ws2.addRow([title]);
-  const ov = overviewRows(input);
-  putTable(ws2, ov.header, ov.rows);
-  const ws3 = wb.addWorksheet("交流クラス別");
-  ws3.addRow([title]);
-  const ex = exchangeRows(input);
-  putTable(ws3, ex.header, ex.rows);
+  if (layouts.overview) {
+    const ws2 = wb.addWorksheet("全体一覧");
+    ws2.addRow([title]);
+    const ov = overviewRows(input);
+    putTable(ws2, ov.header, ov.rows);
+  }
+  if (layouts.exchange) {
+    const ws3 = wb.addWorksheet("交流クラス別");
+    ws3.addRow([title]);
+    const ex = exchangeRows(input);
+    putTable(ws3, ex.header, ex.rows);
+  }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
@@ -200,32 +217,43 @@ function pageBreakPara() {
   return new Paragraph({ children: [new PageBreak()] });
 }
 
-export async function buildWeekDocx(input: WeekExportInput): Promise<Buffer> {
+export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true }): Promise<Buffer> {
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const children: Array<Paragraph | Table> = [
-    new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 30, font: FONT })], spacing: { after: 120 } }),
+    new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 30, font: FONT })], spacing: { after: 80 } }),
   ];
-  for (const s of input.students) {
-    const sheet = studentSheet(input, s.id);
-    if (!sheet) continue;
-    if (children.length > 1) children.push(pageBreakPara());
-    children.push(
-      new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-      docxTable(sheet.header, sheet.rows),
-    );
+  let started = false;
+  const needBreak = () => {
+    if (started) children.push(pageBreakPara());
+    started = true;
+  };
+  if (layouts.sheets) {
+    for (const s of input.students) {
+      const sheet = studentSheet(input, s.id);
+      if (!sheet) continue;
+      needBreak();
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
+        docxTable(sheet.header, sheet.rows),
+      );
+    }
   }
-  children.push(pageBreakPara());
-  children.push(
-    new Paragraph({ children: [new TextRun({ text: "全体一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-  );
-  const ov = overviewRows(input);
-  children.push(docxTable(ov.header, ov.rows));
-  children.push(pageBreakPara());
-  children.push(
-    new Paragraph({ children: [new TextRun({ text: "交流クラス別", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-  );
-  const ex = exchangeRows(input);
-  children.push(docxTable(ex.header, ex.rows));
+  if (layouts.overview) {
+    needBreak();
+    children.push(
+      new Paragraph({ children: [new TextRun({ text: "全体一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
+    );
+    const ov = overviewRows(input);
+    children.push(docxTable(ov.header, ov.rows));
+  }
+  if (layouts.exchange) {
+    needBreak();
+    children.push(
+      new Paragraph({ children: [new TextRun({ text: "交流クラス別", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
+    );
+    const ex = exchangeRows(input);
+    children.push(docxTable(ex.header, ex.rows));
+  }
   const doc = new Document({
     styles: { default: { document: { run: { font: FONT, size: 18 } } } },
     sections: [{ children }],
@@ -353,26 +381,35 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][]) {
   c.y += 8;
 }
 
-export async function buildWeekPdf(input: WeekExportInput): Promise<Buffer> {
+export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true }): Promise<Buffer> {
   const c = makePdf();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   pdfText(c, title, 14, 4);
-  let first = true;
-  for (const s of input.students) {
-    const sheet = studentSheet(input, s.id);
-    if (!sheet) continue;
-    if (!first) pageBreak(c);
-    first = false;
-    pdfText(c, sheet.title, 11, 2);
-    pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+  let started = false;
+  const needBreak = () => {
+    if (started) pageBreak(c);
+    started = true;
+  };
+  if (layouts.sheets) {
+    for (const s of input.students) {
+      const sheet = studentSheet(input, s.id);
+      if (!sheet) continue;
+      needBreak();
+      pdfText(c, sheet.title, 11, 2);
+      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+    }
   }
-  pageBreak(c);
-  pdfText(c, "全体一覧", 11, 2);
-  const ov = overviewRows(input);
-  pdfTable(c, ov.header, ov.rows);
-  pageBreak(c);
-  pdfText(c, "交流クラス別", 11, 2);
-  const ex = exchangeRows(input);
-  pdfTable(c, ex.header, ex.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+  if (layouts.overview) {
+    needBreak();
+    pdfText(c, "全体一覧", 11, 2);
+    const ov = overviewRows(input);
+    pdfTable(c, ov.header, ov.rows);
+  }
+  if (layouts.exchange) {
+    needBreak();
+    pdfText(c, "交流クラス別", 11, 2);
+    const ex = exchangeRows(input);
+    pdfTable(c, ex.header, ex.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+  }
   return collectPdf(c.doc);
 }

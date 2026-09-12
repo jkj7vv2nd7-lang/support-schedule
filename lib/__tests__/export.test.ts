@@ -52,6 +52,14 @@ describe("week export", () => {
     expect((await buildWeekXlsx(empty)).length).toBeGreaterThan(0);
     expect((await buildWeekDocx(empty)).length).toBeGreaterThan(0);
   });
+
+  it("layouts指定で表を絞れる", async () => {
+    const only = { sheets: false, overview: false, exchange: true };
+    expect((await buildWeekDocx(input(), only)).length).toBeGreaterThan(0);
+    expect((await buildWeekXlsx(input(), only)).length).toBeGreaterThan(0);
+    const buf = await buildWeekPdf(input(), only);
+    expect(buf.length).toBeGreaterThan(0);
+  });
 });
 
 describe("sanitizeFileName", () => {
