@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, autoAssignAides, buildWeekCells, formatWeek, mondayOf } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, formatWeek, mondayOf } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -84,7 +84,31 @@ export default function WeeksPage() {
   }
 
   function runAutoAssign(week: WeekPlan) {
-    updateCells(week.id, (cells) => autoAssignAides(cells, aides));
+    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts), aides));
+  }
+
+  function setPost(weekId: string, aideId: string, kind: "studentIds" | "classIds", id: string, on: boolean) {
+    persist(
+      weeks.map((w) => {
+        if (w.id !== weekId) return w;
+        const posts = [...(w.posts ?? [])];
+        const idx = posts.findIndex((p) => p.aideId === aideId);
+        const cur = idx >= 0 ? posts[idx] : { aideId, studentIds: [], classIds: [] };
+        const list = on
+          ? cur[kind].includes(id)
+            ? cur[kind]
+            : [...cur[kind], id]
+          : cur[kind].filter((x) => x !== id);
+        const next = { ...cur, [kind]: list };
+        if (idx >= 0) {
+          if (next.studentIds.length === 0 && next.classIds.length === 0) posts.splice(idx, 1);
+          else posts[idx] = next;
+        } else if (next.studentIds.length > 0 || next.classIds.length > 0) {
+          posts.push(next);
+        }
+        return { ...w, posts, updatedAt: Date.now() };
+      }),
+    );
   }
 
   function removeWeek(id: string) {
@@ -183,6 +207,51 @@ export default function WeeksPage() {
                     印刷する
                   </Btn>
                   <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} />
+                </div>
+                <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                  <p className="text-sm font-bold">今週の介助員担当（毎週変更可）</p>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    担当にした児童・クラスは、新規セルや「介助員を自動割付」に反映されます。セル単位の手修正も可能です。
+                  </p>
+                  {aides.length === 0 ? (
+                    <p className="mt-2 text-xs text-zinc-400">介助員が未登録です。「児童・介助員」で登録してください。</p>
+                  ) : null}
+                  {aides.map((a) => {
+                    const post = open.posts?.find((p) => p.aideId === a.id);
+                    return (
+                      <div key={a.id} className="mt-2 border-t border-zinc-100 pt-2">
+                        <p className="text-xs font-bold">{a.name}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-zinc-400">児童：</span>
+                          {students.map((s) => (
+                            <label key={s.id} className="flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs has-checked:border-teal-600 has-checked:bg-teal-50">
+                              <input
+                                type="checkbox"
+                                checked={post?.studentIds.includes(s.id) ?? false}
+                                onChange={(e) => setPost(open.id, a.id, "studentIds", s.id, e.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-zinc-300 text-teal-600 focus:ring-teal-600/20"
+                              />
+                              {s.name}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-zinc-400">交流：</span>
+                          {classes.map((c) => (
+                            <label key={c.id} className="flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs has-checked:border-teal-600 has-checked:bg-teal-50">
+                              <input
+                                type="checkbox"
+                                checked={post?.classIds.includes(c.id) ?? false}
+                                onChange={(e) => setPost(open.id, a.id, "classIds", c.id, e.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-zinc-300 text-teal-600 focus:ring-teal-600/20"
+                              />
+                              {c.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-xs font-bold text-zinc-600">出力する表：</span>

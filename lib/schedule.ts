@@ -1,4 +1,4 @@
-import { blankCell, slotKey, type Aide, type CellPlan, type ExchangeClass, type Student } from "@/lib/types";
+import { blankCell, slotKey, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost } from "@/lib/types";
 
 // 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）
 export function buildWeekCells(
@@ -40,7 +40,50 @@ export function buildWeekCells(
   return out;
 }
 
-// 介助員を自動割付する（負荷均等・勤務不可を尊重）。手修正前提の提案。
+// 週の担当表を空きセルに反映する（児童指定＞クラス指定）。手修正済みセルは温存。
+export function applyRoster(
+  cells: Record<string, Record<string, CellPlan>>,
+  students: Student[],
+  posts: WeekAidePost[] | undefined,
+): Record<string, Record<string, CellPlan>> {
+  const list = Array.isArray(posts) ? posts : [];
+  const clean = list
+    .filter((p) => !!p && typeof p === "object")
+    .map((p) => p as unknown as Record<string, unknown>)
+    .filter((o) => typeof o.aideId === "string" && o.aideId.length > 0)
+    .map((o) => ({
+      aideId: o.aideId as string,
+      studentIds: Array.isArray(o.studentIds) ? o.studentIds.filter((x): x is string => typeof x === "string") : [],
+      classIds: Array.isArray(o.classIds) ? o.classIds.filter((x): x is string => typeof x === "string") : [],
+    }));
+  if (clean.length === 0) return cells;
+  const byStudent = new Map<string, string>();
+  const byClass = new Map<string, string>();
+  for (const p of clean) {
+    for (const sid of p.studentIds) {
+      if (!byStudent.has(sid)) byStudent.set(sid, p.aideId);
+    }
+    for (const cid of p.classIds) {
+      if (!byClass.has(cid)) byClass.set(cid, p.aideId);
+    }
+  }
+  const classOf = new Map(students.map((s) => [s.id, s.exchangeClassId]));
+  const out: Record<string, Record<string, CellPlan>> = {};
+  for (const [sid, bySlot] of Object.entries(cells)) {
+    const next: Record<string, CellPlan> = {};
+    for (const [key, cell] of Object.entries(bySlot)) {
+      if (cell.aideId) {
+        next[key] = cell;
+        continue;
+      }
+      const cid = cell.classId ?? classOf.get(sid) ?? null;
+      const aide = byStudent.get(sid) ?? (cid ? byClass.get(cid) : undefined) ?? null;
+      next[key] = aide ? { ...cell, aideId: aide } : cell;
+    }
+    out[sid] = next;
+  }
+  return out;
+}
 export function autoAssignAides(
   cells: Record<string, Record<string, CellPlan>>,
   aides: Aide[],

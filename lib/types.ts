@@ -56,11 +56,20 @@ export type CellPlan = {
   classId?: string | null;
 };
 
+// 週ごとの介助員担当（毎週変えられる）
+export type WeekAidePost = {
+  aideId: string;
+  studentIds: string[];
+  classIds: string[];
+};
+
 // 週予定（cells[studentId][slotKey]）
 export type WeekPlan = {
   id: string;
   weekStart: string; // YYYY-MM-DD（月曜）
   cells: Record<string, Record<string, CellPlan>>;
+  // 今週の介助員担当（任意）
+  posts?: WeekAidePost[];
   createdAt: number;
   updatedAt: number;
 };

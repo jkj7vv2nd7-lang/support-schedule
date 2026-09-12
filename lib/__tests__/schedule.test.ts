@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoAssignAides, buildWeekCells } from "@/lib/schedule";
+import { applyRoster, autoAssignAides, buildWeekCells } from "@/lib/schedule";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student } from "@/lib/types";
 
 function cls(): ExchangeClass {
@@ -61,5 +61,32 @@ describe("autoAssignAides", () => {
   it("介助員ゼロでも落ちない", () => {
     const cells = autoAssignAides(buildWeekCells([student()], [cls()]), []);
     expect(cells.s1[slotKey(0, 1)].aideId).toBeNull();
+  });
+});
+
+describe("applyRoster", () => {
+  it("児童指定＞クラス指定で反映し手修正を温存する", () => {
+    const cells = buildWeekCells([student()], [cls()]);
+    const out = applyRoster(cells, [student()], [
+      { aideId: "a1", studentIds: [], classIds: ["c1"] },
+      { aideId: "a2", studentIds: ["s1"], classIds: [] },
+    ]);
+    // s1は児童指定a2が優先
+    expect(out.s1[slotKey(0, 1)].aideId).toBe("a2");
+    expect(out.s1[slotKey(1, 1)].aideId).toBe("a2");
+  });
+
+  it("手修正済みセルは上書きしない", () => {
+    const cells = buildWeekCells([student()], [cls()]);
+    cells.s1[slotKey(0, 1)] = { ...cells.s1[slotKey(0, 1)], aideId: "manual" };
+    const out = applyRoster(cells, [student()], [{ aideId: "a1", studentIds: ["s1"], classIds: [] }]);
+    expect(out.s1[slotKey(0, 1)].aideId).toBe("manual");
+    expect(out.s1[slotKey(0, 2)].aideId).toBe("a1");
+  });
+
+  it("壊れた担当表でも落ちない", () => {
+    const cells = buildWeekCells([student()], [cls()]);
+    const out = applyRoster(cells, [student()], [null, { aideId: 1 }, { aideId: "a1", studentIds: "x" }] as unknown as []);
+    expect(out.s1[slotKey(0, 1)].aideId).toBeNull();
   });
 });
