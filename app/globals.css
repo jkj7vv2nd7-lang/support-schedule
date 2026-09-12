@@ -27,6 +27,9 @@ body {
 
 @media print {
   .no-print { display: none !important; }
+  section { box-shadow: none !important; border: none !important; }
+  table { break-inside: avoid; }
+  tr, th, td { break-inside: avoid; page-break-inside: avoid; }
 }
 @page {
   size: A4 landscape;

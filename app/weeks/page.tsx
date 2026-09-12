@@ -16,6 +16,7 @@ import {
 import { addDays, autoAssignAides, buildWeekCells, formatWeek, mondayOf } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
+import ExportButtons from "@/components/export-buttons";
 
 function todayMonday(): string {
   return mondayOf(new Date());
@@ -99,13 +100,17 @@ export default function WeeksPage() {
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="no-print">
         <h1 className="text-xl font-bold">週予定</h1>
         <p className="mt-1 text-sm text-zinc-500">週ごとに作成し、児童別シートと全体一覧を印刷できます。</p>
       </div>
-      {error ? <Notice tone="red">{error}</Notice> : null}
+      {error ? (
+        <div className="no-print">
+          <Notice tone="red">{error}</Notice>
+        </div>
+      ) : null}
 
-      <Card>
+      <Card className="no-print">
         <StepHeading step="＋">新しい週予定</StepHeading>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
@@ -144,7 +149,7 @@ export default function WeeksPage() {
         const isOpen = openId === w.id;
         return (
           <Card key={w.id}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="no-print flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-base font-bold">
                   {w.weekStart}（{formatWeek(w.weekStart)}）
@@ -171,6 +176,7 @@ export default function WeeksPage() {
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => window.print()}>
                     印刷（児童別・全体・交流別）
                   </Btn>
+                  <ExportButtons week={open} students={students} aides={aides} classes={classes} onError={setError} />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
