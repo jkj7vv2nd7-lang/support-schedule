@@ -52,6 +52,8 @@ export type CellPlan = {
   content: string;
   teacher: string;
   aideId: string | null;
+  // 交流先クラス（交流セルのみ）
+  classId?: string | null;
 };
 
 // 週予定（cells[studentId][slotKey]）

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Btn, Card, Field, Notice, Select, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeSlot, type Student } from "@/lib/types";
-import { loadAides, loadClasses, loadStudents, makeId, saveAides, saveStudents } from "@/lib/storage";
+import { K_AIDES, K_CLASSES, K_STUDENTS, loadAides, loadClasses, loadStudents, makeId, saveAides, saveStudents } from "@/lib/storage";
+import { refreshStored, useStored } from "@/lib/store";
 
 function toggleSlot(list: ExchangeSlot[], day: number, period: number): ExchangeSlot[] {
   const key = slotKey(day, period);
@@ -69,9 +70,9 @@ function SlotGrid({
 }
 
 export default function PeoplePage() {
-  const [students, setStudents] = useState<Student[]>(() => loadStudents());
-  const [aides, setAides] = useState<Aide[]>(() => loadAides());
-  const classes = loadClasses();
+  const students = useStored(K_STUDENTS, loadStudents) ?? [];
+  const aides = useStored(K_AIDES, loadAides) ?? [];
+  const classes = useStored(K_CLASSES, loadClasses) ?? [];
   const [error, setError] = useState<string | null>(null);
 
   const [sName, setSName] = useState("");
@@ -84,13 +85,19 @@ export default function PeoplePage() {
   const [editingAide, setEditingAide] = useState<string | null>(null);
 
   function persistStudents(next: Student[]) {
-    setStudents(next);
-    if (!saveStudents(next)) setError("保存に失敗しました");
+    if (!saveStudents(next)) {
+      setError("保存に失敗しました");
+      return;
+    }
+    refreshStored(K_STUDENTS, loadStudents);
   }
 
   function persistAides(next: Aide[]) {
-    setAides(next);
-    if (!saveAides(next)) setError("保存に失敗しました");
+    if (!saveAides(next)) {
+      setError("保存に失敗しました");
+      return;
+    }
+    refreshStored(K_AIDES, loadAides);
   }
 
   function resetStudentForm() {

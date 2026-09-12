@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { Btn, Card, Field, Notice, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, emptyTimetable, type ExchangeClass, type SlotContent } from "@/lib/types";
-import { loadClasses, makeId, saveClasses } from "@/lib/storage";
+import { K_CLASSES, loadClasses, makeId, saveClasses } from "@/lib/storage";
+import { refreshStored, useStored } from "@/lib/store";
 
 async function downscale(file: File, maxDim = 1600): Promise<File> {
   try {
@@ -31,7 +32,7 @@ async function downscale(file: File, maxDim = 1600): Promise<File> {
 }
 
 export default function ClassesPage() {
-  const [items, setItems] = useState<ExchangeClass[]>(() => loadClasses());
+  const items = useStored(K_CLASSES, loadClasses) ?? [];
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
@@ -42,8 +43,11 @@ export default function ClassesPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   function persist(next: ExchangeClass[]) {
-    setItems(next);
-    if (!saveClasses(next)) setError("保存に失敗しました（ブラウザの容量を確認してください）");
+    if (!saveClasses(next)) {
+      setError("保存に失敗しました（ブラウザの容量を確認してください）");
+      return;
+    }
+    refreshStored(K_CLASSES, loadClasses);
   }
 
   function startNew() {

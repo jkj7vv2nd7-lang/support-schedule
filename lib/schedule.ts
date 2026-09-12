@@ -28,6 +28,7 @@ export function buildWeekCells(
             content: src?.content ?? "",
             teacher: "",
             aideId: null,
+            classId: cls.id,
           };
         } else {
           cur[key] = blankCell("support");

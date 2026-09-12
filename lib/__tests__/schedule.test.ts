@@ -19,7 +19,7 @@ function aide(id: string, off: { day: number; period: number }[] = []): Aide {
 describe("buildWeekCells", () => {
   it("交流コマは時間割を引用し他は支援になる", () => {
     const cells = buildWeekCells([student()], [cls()]);
-    expect(cells.s1[slotKey(0, 1)]).toMatchObject({ place: "exchange", subject: "国語" });
+    expect(cells.s1[slotKey(0, 1)]).toMatchObject({ place: "exchange", subject: "国語", classId: "c1" });
     expect(cells.s1[slotKey(0, 2)].place).toBe("support");
     expect(Object.keys(cells.s1)).toHaveLength(30);
   });

@@ -1,10 +1,10 @@
 import { emptyTimetable } from "@/lib/types";
 import type { Aide, ExchangeClass, Student, WeekPlan } from "@/lib/types";
 
-const K_CLASSES = "support-schedule:classes:v1";
-const K_STUDENTS = "support-schedule:students:v1";
-const K_AIDES = "support-schedule:aides:v1";
-const K_WEEKS = "support-schedule:weeks:v1";
+export const K_CLASSES = "support-schedule:classes:v1";
+export const K_STUDENTS = "support-schedule:students:v1";
+export const K_AIDES = "support-schedule:aides:v1";
+export const K_WEEKS = "support-schedule:weeks:v1";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";

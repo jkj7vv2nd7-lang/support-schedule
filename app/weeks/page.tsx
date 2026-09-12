@@ -6,21 +6,25 @@ import {
   DAYS,
   PERIODS,
   slotKey,
+  type Aide,
   type CellPlan,
+  type ExchangeClass,
+  type Student,
   type WeekPlan,
 } from "@/lib/types";
 import { addDays, autoAssignAides, buildWeekCells, formatWeek, mondayOf } from "@/lib/schedule";
-import { loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
+import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
+import { refreshStored, useStored } from "@/lib/store";
 
 function todayMonday(): string {
   return mondayOf(new Date());
 }
 
 export default function WeeksPage() {
-  const [weeks, setWeeks] = useState<WeekPlan[]>(() => loadWeeks());
-  const [students] = useState(() => loadStudents());
-  const [classes] = useState(() => loadClasses());
-  const [aides] = useState(() => loadAides());
+  const weeks = useStored(K_WEEKS, loadWeeks) ?? [];
+  const students = useStored(K_STUDENTS, loadStudents) ?? [];
+  const classes = useStored(K_CLASSES, loadClasses) ?? [];
+  const aides = useStored(K_AIDES, loadAides) ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState(() => todayMonday());
   const [copyFrom, setCopyFrom] = useState("");
@@ -33,9 +37,12 @@ export default function WeeksPage() {
 
   function persist(next: WeekPlan[]) {
     const sorted = [...next].sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1));
-    setWeeks(sorted);
-    if (!saveWeeks(sorted)) setError("保存に失敗しました");
-    else setError(null);
+    if (!saveWeeks(sorted)) {
+      setError("保存に失敗しました");
+      return;
+    }
+    setError(null);
+    refreshStored(K_WEEKS, loadWeeks);
   }
 
   function createWeek() {
@@ -161,7 +168,7 @@ export default function WeeksPage() {
                     介助員を自動割付
                   </Btn>
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => window.print()}>
-                    印刷（児童別・全体一覧）
+                    印刷（児童別・全体・交流別）
                   </Btn>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -281,7 +288,7 @@ export default function WeeksPage() {
               </div>
             ) : null}
 
-            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} /> : null}
+            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} /> : null}
           </Card>
         );
       })}
@@ -293,12 +300,15 @@ function WeekPrint({
   weeks,
   students,
   aides,
+  classes,
 }: {
   weeks: WeekPlan[];
-  students: { id: string; name: string }[];
-  aides: { id: string; name: string }[];
+  students: Student[];
+  aides: Aide[];
+  classes: ExchangeClass[];
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
+  const classById = new Map(classes.map((c) => [c.id, c]));
   return (
     <div className="hidden print:block">
       {weeks.map((w) => (
@@ -376,6 +386,68 @@ function WeekPrint({
               </table>
             </div>
           ))}
+          <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
+          <table className="mt-1 w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="border px-1 py-1">時限</th>
+                {DAYS.map((d) => (
+                  <th key={d} className="border px-1 py-1">{d}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PERIODS.map((p) => (
+                <tr key={p}>
+                  <td className="border px-1 py-1 text-center font-bold">{p}</td>
+                  {DAYS.map((_, day) => {
+                    const key = slotKey(day, p);
+                    const groups = new Map<string, { names: string[]; teachers: string[]; aides: string[]; subj: string; cont: string }>();
+                    for (const s of students) {
+                      const c = w.cells[s.id]?.[key];
+                      if (!c || c.place !== "exchange") continue;
+                      const cid = c.classId ?? s.exchangeClassId ?? "";
+                      const g = groups.get(cid) ?? { names: [], teachers: [], aides: [], subj: "", cont: "" };
+                      g.names.push(s.name);
+                      if (c.teacher && !g.teachers.includes(c.teacher)) g.teachers.push(c.teacher);
+                      const an = c.aideId ? (aideById.get(c.aideId) ?? "") : "";
+                      if (an && !g.aides.includes(an)) g.aides.push(an);
+                      if (!g.subj && c.subject) {
+                        g.subj = c.subject;
+                        g.cont = c.content;
+                      }
+                      groups.set(cid, g);
+                    }
+                    const order = classes.filter((c) => groups.has(c.id)).map((c) => c.id);
+                    for (const gid of groups.keys()) {
+                      if (!order.includes(gid)) order.push(gid);
+                    }
+                    return (
+                      <td key={day} className="border px-1 py-1 align-top">
+                        {order.length === 0 ? <span className="text-zinc-400">―</span> : null}
+                        {order.map((gid) => {
+                          const cls = classById.get(gid);
+                          const g = groups.get(gid);
+                          if (!g) return null;
+                          const slot = cls?.timetable[day]?.[p - 1];
+                          const subj = slot?.subject || g.subj;
+                          const cont = slot?.content || g.cont;
+                          const staff = [...g.teachers, ...g.aides].join("・");
+                          return (
+                            <div key={gid} className="mb-1 border-b border-dashed border-zinc-300 pb-1 last:mb-0 last:border-0 last:pb-0">
+                              <span className="font-bold">{cls ? `${cls.name}：` : ""}{g.names.join("・")}</span>
+                              {subj ? <span className="block">{subj}{cont ? `：${cont}` : ""}</span> : null}
+                              {staff ? <span className="block text-zinc-500">{staff}</span> : null}
+                            </div>
+                          );
+                        })}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ))}
     </div>
