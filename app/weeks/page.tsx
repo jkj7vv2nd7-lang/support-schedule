@@ -308,7 +308,6 @@ function WeekPrint({
   classes: ExchangeClass[];
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
-  const classById = new Map(classes.map((c) => [c.id, c]));
   return (
     <div className="hidden print:block">
       {weeks.map((w) => (
@@ -386,68 +385,77 @@ function WeekPrint({
               </table>
             </div>
           ))}
-          <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
-          <table className="mt-1 w-full border-collapse text-xs">
-            <thead>
-              <tr>
-                <th className="border px-1 py-1">時限</th>
-                {DAYS.map((d) => (
-                  <th key={d} className="border px-1 py-1">{d}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PERIODS.map((p) => (
-                <tr key={p}>
-                  <td className="border px-1 py-1 text-center font-bold">{p}</td>
-                  {DAYS.map((_, day) => {
+          <h3 className="mt-6 text-sm font-bold">交流クラス別一覧（曜日ごと）</h3>
+          {DAYS.map((d, day) => (
+            <div key={d} className="mt-2 break-inside-avoid">
+              <h4 className="text-xs font-bold">{d}曜日（{addDays(w.weekStart, day).slice(5).replace("-", "/")}）</h4>
+              <table className="mt-1 w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="w-10 border px-1 py-1">時限</th>
+                    {classes.map((c) => (
+                      <th key={c.id} className="border px-1 py-1">{c.name}</th>
+                    ))}
+                    <th className="border px-1 py-1">支援学級</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PERIODS.map((p) => {
                     const key = slotKey(day, p);
-                    const groups = new Map<string, { names: string[]; teachers: string[]; aides: string[]; subj: string; cont: string }>();
-                    for (const s of students) {
-                      const c = w.cells[s.id]?.[key];
-                      if (!c || c.place !== "exchange") continue;
-                      const cid = c.classId ?? s.exchangeClassId ?? "";
-                      const g = groups.get(cid) ?? { names: [], teachers: [], aides: [], subj: "", cont: "" };
-                      g.names.push(s.name);
-                      if (c.teacher && !g.teachers.includes(c.teacher)) g.teachers.push(c.teacher);
-                      const an = c.aideId ? (aideById.get(c.aideId) ?? "") : "";
-                      if (an && !g.aides.includes(an)) g.aides.push(an);
-                      if (!g.subj && c.subject) {
-                        g.subj = c.subject;
-                        g.cont = c.content;
-                      }
-                      groups.set(cid, g);
-                    }
-                    const order = classes.filter((c) => groups.has(c.id)).map((c) => c.id);
-                    for (const gid of groups.keys()) {
-                      if (!order.includes(gid)) order.push(gid);
-                    }
                     return (
-                      <td key={day} className="border px-1 py-1 align-top">
-                        {order.length === 0 ? <span className="text-zinc-400">―</span> : null}
-                        {order.map((gid) => {
-                          const cls = classById.get(gid);
-                          const g = groups.get(gid);
-                          if (!g) return null;
-                          const slot = cls?.timetable[day]?.[p - 1];
-                          const subj = slot?.subject || g.subj;
-                          const cont = slot?.content || g.cont;
-                          const staff = [...g.teachers, ...g.aides].join("・");
+                      <tr key={p}>
+                        <td className="border px-1 py-1 text-center font-bold">{p}</td>
+                        {classes.map((cls) => {
+                          const inClass = students.filter((s) => {
+                            const c = w.cells[s.id]?.[key];
+                            if (!c || c.place !== "exchange") return false;
+                            return (c.classId ?? s.exchangeClassId) === cls.id;
+                          });
+                          if (inClass.length === 0) {
+                            return <td key={cls.id} className="border px-1 py-1 text-zinc-400">―</td>;
+                          }
+                          const slot = cls.timetable[day]?.[p - 1];
+                          const subj = slot?.subject || inClass.map((s) => w.cells[s.id]?.[key]?.subject ?? "").find(Boolean) || "";
+                          const cont = slot?.content || inClass.map((s) => w.cells[s.id]?.[key]?.content ?? "").find(Boolean) || "";
+                          const staff = Array.from(
+                            new Set(
+                              inClass.flatMap((s) => {
+                                const c = w.cells[s.id]?.[key];
+                                return [c?.teacher ?? "", c?.aideId ? (aideById.get(c.aideId) ?? "") : ""];
+                              }).filter(Boolean),
+                            ),
+                          ).join("・");
                           return (
-                            <div key={gid} className="mb-1 border-b border-dashed border-zinc-300 pb-1 last:mb-0 last:border-0 last:pb-0">
-                              <span className="font-bold">{cls ? `${cls.name}：` : ""}{g.names.join("・")}</span>
+                            <td key={cls.id} className="border px-1 py-1 align-top">
+                              <span className="font-bold">{inClass.map((s) => s.name).join("・")}</span>
                               {subj ? <span className="block">{subj}{cont ? `：${cont}` : ""}</span> : null}
                               {staff ? <span className="block text-zinc-500">{staff}</span> : null}
-                            </div>
+                            </td>
                           );
                         })}
-                      </td>
+                        <td className="border px-1 py-1 align-top">
+                          {students
+                            .filter((s) => {
+                              const c = w.cells[s.id]?.[key];
+                              return c && c.place !== "exchange";
+                            })
+                            .map((s) => {
+                              const c = w.cells[s.id]?.[key];
+                              return (
+                                <span key={s.id} className="block">
+                                  <span className="font-bold">{s.name}</span>
+                                  {c?.subject ? `：${c.subject}` : ""}
+                                </span>
+                              );
+                            })}
+                        </td>
+                      </tr>
                     );
                   })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
       ))}
     </div>
