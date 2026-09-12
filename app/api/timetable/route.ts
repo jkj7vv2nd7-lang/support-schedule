@@ -71,37 +71,45 @@ export async function POST(request: Request) {
 
   try {
     const buf = Buffer.from(await image.arrayBuffer()).toString("base64");
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: "この時間割を読み取ってください。" },
-                { inlineData: { mimeType: image.type || "image/jpeg", data: buf } },
-              ],
-            },
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: "この時間割を読み取ってください。" },
+            { inlineData: { mimeType: image.type || "image/jpeg", data: buf } },
           ],
-        }),
-      },
-    );
-    if (!res.ok) {
-      const body = await res.text();
-      let detail = body.slice(0, 200);
+        },
+      ],
+    });
+    let res: Response | null = null;
+    let lastStatus = 0;
+    let lastBody = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 1500 * 2 ** (attempt - 1) + Math.random() * 500));
+      }
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
+        { method: "POST", headers: { "content-type": "application/json" }, body },
+      );
+      if (res.ok) break;
+      lastStatus = res.status;
+      lastBody = await res.text();
+      if (res.status !== 429 && res.status !== 500 && res.status !== 502 && res.status !== 503 && res.status !== 504) break;
+    }
+    if (!res || !res.ok) {
+      let detail = lastBody.slice(0, 200);
       try {
-        const json = JSON.parse(body) as { error?: { message?: unknown } };
+        const json = JSON.parse(lastBody) as { error?: { message?: unknown } };
         if (typeof json?.error?.message === "string" && json.error.message) {
           detail = json.error.message.slice(0, 200);
         }
       } catch {
         // ignore
       }
-      return Response.json({ ok: false, error: `時間割の読み取りに失敗しました (HTTP ${res.status}): ${detail}` }, { status: 502 });
+      return Response.json({ ok: false, error: `時間割の読み取りに失敗しました (HTTP ${lastStatus}): ${detail}` }, { status: 502 });
     }
     const data = await res.json();
     const text = (data.candidates?.[0]?.content?.parts ?? [])
