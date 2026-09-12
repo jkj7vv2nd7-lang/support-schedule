@@ -79,7 +79,8 @@ export function applyRoster(
         continue;
       }
       const cid = cell.classId ?? classOf.get(sid) ?? null;
-      const aide = byStudent.get(sid) ?? (cid ? byClass.get(cid) : undefined) ?? null;
+      // クラス指定は交流セルのみ。児童指定は全セル
+      const aide = byStudent.get(sid) ?? (cell.place === "exchange" && cid ? byClass.get(cid) : undefined) ?? null;
       next[key] = aide ? { ...cell, aideId: aide } : cell;
     }
     out[sid] = next;
