@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 支援週予定メーカー
 
-## Getting Started
+特別支援学級の担任向けに、週予定表づくりを時短するWebアプリです。
+交流クラスの時間割をもとに、支援児童ごとの週予定・介助員の配置をまとめ、印刷・配布できます。
 
-First, run the development server:
+## 使い方
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### 起動
+1. フォルダ内の **`start-app.cmd`** をダブルクリック
+2. ブラウザが自動で `http://localhost:3001` を開きます
+3. 終わるときは黒いウィンドウで **Ctrl+C**
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 週予定づくりの流れ
+1. **交流クラス**：時間割の写真を取り込むか、手入力します（初回のみ）
+2. **児童・介助員**：支援児童の交流先・交流コマ、介助員の勤務不可コマを登録します
+3. **週予定**：週を作り、「介助員を自動割付」→セルを手修正します
+4. **出力**：必要な表（児童別・全体一覧・交流クラス別）にチェックして印刷／PDF・Excel・Word保存します
+5. 翌週は「先週コピー」で複写し、変更点だけ直します
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 写真取り込みを使う場合
+`.env.local` の `GEMINI_API_KEY=` に Google AI Studio のキー（無料枠あり）を設定し、
+アプリを再起動してください。キーなしでも手入力ですべて利用できます。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## データについて
+- 保存先はブラウザの **localStorage** のため、別の端末とは共有されません
+- 他の先生に渡す場合は、週予定の Excel 出力を共有してください
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 技術スタック
+- Next.js（App Router）+ React + TypeScript + Tailwind CSS v4
+- 時間割の写真読み取り：Gemini 画像理解（APIキーはサーバー側でのみ参照）
+- PDF出力：pdfkit、日本語フォントは同梱の Noto Sans CJK JP（SIL Open Font License 1.1）を使用
