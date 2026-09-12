@@ -33,10 +33,10 @@ export default function WeeksPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeStudent, setActiveStudent] = useState<string>("");
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
-  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true });
-  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange;
+  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true });
+  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides;
 
-  function toggleLayout(key: "sheets" | "overview" | "exchange") {
+  function toggleLayout(key: "sheets" | "overview" | "exchange" | "aides") {
     setLayouts((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
@@ -264,6 +264,7 @@ export default function WeeksPage() {
                       { key: "sheets", label: "児童別" },
                       { key: "overview", label: "全体一覧" },
                       { key: "exchange", label: "交流クラス別" },
+                      { key: "aides", label: "介助員別" },
                     ] as const
                   ).map((l) => (
                     <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
@@ -402,7 +403,7 @@ export default function WeeksPage() {
   );
 }
 
-export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean };
+export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean };
 
 function WeekPrint({
   weeks,
@@ -610,6 +611,60 @@ function WeekPrint({
           </table>
           </div>
           ) : null}
+          {layouts.aides
+            ? aides.map((a, ai) => {
+                const moreAfter = aides.slice(ai + 1).length > 0;
+                return (
+                  <div key={a.id} className={moreAfter ? "break-after-page" : undefined}>
+                    <h3 className="mt-6 text-sm font-bold">{a.name}（介助）</h3>
+                    <table className="mt-1 w-full border-collapse text-xs">
+                      <thead>
+                        <tr>
+                          <th className="w-14 border px-1 py-1">曜日</th>
+                          {PERIODS.map((p) => (
+                            <th key={p} className="border px-1 py-1">{p}時限</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {DAYS.map((d, day) => (
+                          <tr key={d}>
+                            <td className="border px-1 py-1 text-center font-bold">
+                              {d}
+                              <span className="block text-[10px] font-normal text-zinc-500">
+                                {addDays(w.weekStart, day).slice(5).replace("-", "/")}
+                              </span>
+                            </td>
+                            {PERIODS.map((p) => {
+                              const key = slotKey(day, p);
+                              const assigned = students.filter((s) => w.cells[s.id]?.[key]?.aideId === a.id);
+                              return (
+                                <td key={p} className="border px-1 py-1 align-top">
+                                  {assigned.length === 0 ? (
+                                    <span className="text-zinc-400">―</span>
+                                  ) : (
+                                    assigned.map((s) => {
+                                      const c = w.cells[s.id]?.[key];
+                                      return (
+                                        <span key={s.id} className="block">
+                                          <span className="font-bold">{s.name}</span>
+                                          {c ? `：${c.place === "exchange" ? "交流" : "支援"}${c.subject ?? ""}` : ""}
+                                          {c?.content ? <span className="block text-zinc-500">{c.content}</span> : null}
+                                        </span>
+                                      );
+                                    })
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })
+            : null}
         </div>
       );
     })}

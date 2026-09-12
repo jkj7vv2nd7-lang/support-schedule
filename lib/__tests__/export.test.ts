@@ -54,11 +54,17 @@ describe("week export", () => {
   });
 
   it("layouts指定で表を絞れる", async () => {
-    const only = { sheets: false, overview: false, exchange: true };
+    const only = { sheets: false, overview: false, exchange: true, aides: false };
     expect((await buildWeekDocx(input(), only)).length).toBeGreaterThan(0);
     expect((await buildWeekXlsx(input(), only)).length).toBeGreaterThan(0);
     const buf = await buildWeekPdf(input(), only);
     expect(buf.length).toBeGreaterThan(0);
+  });
+
+  it("介助員別が出力される", async () => {
+    const only = { sheets: false, overview: false, exchange: false, aides: true };
+    expect((await buildWeekDocx(input(), only)).length).toBeGreaterThan(0);
+    expect((await buildWeekXlsx(input(), only)).length).toBeGreaterThan(0);
   });
 });
 

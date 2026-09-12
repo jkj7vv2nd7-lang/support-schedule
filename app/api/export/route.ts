@@ -50,7 +50,7 @@ export async function POST(request: Request) {
 
   try {
     const layouts = normalizeLayouts(rawLayouts);
-    if (!layouts.sheets && !layouts.overview && !layouts.exchange) {
+    if (!layouts.sheets && !layouts.overview && !layouts.exchange && !layouts.aides) {
       return Response.json({ ok: false, error: "出力する表を1つ以上選んでください" }, { status: 400 });
     }
     const input = { week, students, aides, classes };

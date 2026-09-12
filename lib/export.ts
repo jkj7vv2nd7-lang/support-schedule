@@ -13,7 +13,7 @@ export type WeekExportInput = {
   classes: ExchangeClass[];
 };
 
-export type WeekExportLayouts = { sheets: boolean; overview: boolean; exchange: boolean };
+export type WeekExportLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean };
 
 export function normalizeLayouts(v: unknown): WeekExportLayouts {
   const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
@@ -21,6 +21,7 @@ export function normalizeLayouts(v: unknown): WeekExportLayouts {
     sheets: o.sheets !== false,
     overview: o.overview !== false,
     exchange: o.exchange !== false,
+    aides: o.aides !== false,
   };
 }
 
@@ -66,7 +67,34 @@ function studentSheet(input: WeekExportInput, sid: string): { title: string; hea
   return { title: st.name, header, rows };
 }
 
-// 全体一覧: rows = 曜日×児童
+// 介助員別連絡票: { title, header, rows }（行=曜日、列=時限）
+function aideSheet(input: WeekExportInput, aideId: string): { title: string; header: string[]; rows: string[][] } | null {
+  const aide = input.aides.find((a) => a.id === aideId);
+  if (!aide) return null;
+  const header = ["曜日", ...PERIODS.map((p) => `${p}時限`)];
+  const rows = DAYS.map((d, day) => {
+    const row = [`${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`];
+    for (const p of PERIODS) {
+      const key = slotKey(day, p);
+      const assigned = input.students.filter((s) => input.week.cells[s.id]?.[key]?.aideId === aideId);
+      if (assigned.length === 0) {
+        row.push("―");
+        continue;
+      }
+      row.push(
+        assigned
+          .map((s) => {
+            const c = input.week.cells[s.id]?.[key];
+            const place = c?.place === "exchange" ? "交流" : "支援";
+            return `${s.name}：${place}${c?.subject ?? ""}${c?.content ? `（${c.content}）` : ""}`;
+          })
+          .join("\n"),
+      );
+    }
+    return row;
+  });
+  return { title: `${aide.name}（介助）`, header, rows };
+}
 function overviewRows(input: WeekExportInput): { header: string[]; rows: string[][] } {
   const header = ["曜日", "児童", ...PERIODS.map((p) => `${p}時限`)];
   const rows: string[][] = [];
@@ -143,7 +171,7 @@ function exchangeRows(input: WeekExportInput): { header: string[]; rows: string[
 
 /* ============================== Excel ============================== */
 
-export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true }): Promise<Buffer> {
+export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const putTable = (ws: ExcelJS.Worksheet, header: string[], rows: string[][]) => {
@@ -181,6 +209,17 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     const ex = exchangeRows(input);
     putTable(ws3, ex.header, ex.rows);
   }
+  if (layouts.aides) {
+    const ws4 = wb.addWorksheet("介助員別");
+    ws4.addRow([title]);
+    for (const a of input.aides) {
+      const sheet = aideSheet(input, a.id);
+      if (!sheet) continue;
+      ws4.addRow([]);
+      ws4.addRow([sheet.title]).font = { bold: true, size: 12 };
+      putTable(ws4, sheet.header, sheet.rows);
+    }
+  }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
@@ -217,7 +256,7 @@ function pageBreakPara() {
   return new Paragraph({ children: [new PageBreak()] });
 }
 
-export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true }): Promise<Buffer> {
+export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true }): Promise<Buffer> {
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const children: Array<Paragraph | Table> = [
     new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 30, font: FONT })], spacing: { after: 80 } }),
@@ -253,6 +292,17 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     );
     const ex = exchangeRows(input);
     children.push(docxTable(ex.header, ex.rows));
+  }
+  if (layouts.aides) {
+    for (const a of input.aides) {
+      const sheet = aideSheet(input, a.id);
+      if (!sheet) continue;
+      needBreak();
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
+        docxTable(sheet.header, sheet.rows),
+      );
+    }
   }
   const doc = new Document({
     styles: { default: { document: { run: { font: FONT, size: 18 } } } },
@@ -381,7 +431,7 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][]) {
   c.y += 8;
 }
 
-export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true }): Promise<Buffer> {
+export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true }): Promise<Buffer> {
   const c = makePdf();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   pdfText(c, title, 14, 4);
@@ -410,6 +460,15 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
     pdfText(c, "交流クラス別", 11, 2);
     const ex = exchangeRows(input);
     pdfTable(c, ex.header, ex.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+  }
+  if (layouts.aides) {
+    for (const a of input.aides) {
+      const sheet = aideSheet(input, a.id);
+      if (!sheet) continue;
+      needBreak();
+      pdfText(c, sheet.title, 11, 2);
+      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+    }
   }
   return collectPdf(c.doc);
 }
