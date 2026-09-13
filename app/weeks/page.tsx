@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Btn, Card, Field, Notice, Select, StepHeading } from "@/components/ui";
 import {
   DAYS,
@@ -33,10 +33,19 @@ export default function WeeksPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeStudent, setActiveStudent] = useState<string>("");
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
-  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true });
-  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides;
+  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false });
+  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily;
+  // 「クラス別(日ごと)」はPDF/Excel/Wordのみ対応（ブラウザ印刷ビューは未対応）なので、印刷ボタンの活性判定には含めない
+  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides;
+  const [notice, setNotice] = useState<string | null>(null);
 
-  function toggleLayout(key: "sheets" | "overview" | "exchange" | "aides") {
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  function toggleLayout(key: "sheets" | "overview" | "exchange" | "aides" | "classDaily") {
     setLayouts((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
@@ -87,10 +96,12 @@ export default function WeeksPage() {
 
   function refreshFromMaster(week: WeekPlan) {
     updateCells(week.id, (cells) => buildWeekCells(students, classes, cells));
+    setNotice("交流クラスの時間割を反映しました");
   }
 
   function runAutoAssign(week: WeekPlan) {
     updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts, week.absent), aides, week.absent));
+    setNotice("介助員を自動割付しました");
   }
 
   function setPost(weekId: string, aideId: string, kind: "studentIds" | "classIds", id: string, on: boolean) {
@@ -148,6 +159,17 @@ export default function WeeksPage() {
     if (openId === id) setOpenId(null);
   }
 
+  // 今週だけの行事・予定メモ（曜日別）
+  function setDayNote(weekId: string, day: number, value: string) {
+    persist(
+      weeks.map((w) => {
+        if (w.id !== weekId) return w;
+        const dayNotes = Array.from({ length: 5 }, (_, i) => (i === day ? value : w.dayNotes?.[i] ?? ""));
+        return { ...w, dayNotes, updatedAt: Date.now() };
+      }),
+    );
+  }
+
   function updateCell(weekId: string, sid: string, key: string, patch: Partial<CellPlan>) {
     updateCells(weekId, (cells) => ({
       ...cells,
@@ -170,6 +192,11 @@ export default function WeeksPage() {
       {error ? (
         <div className="no-print">
           <Notice tone="red">{error}</Notice>
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="no-print">
+          <Notice tone="blue">{notice}</Notice>
         </div>
       ) : null}
 
@@ -236,10 +263,26 @@ export default function WeeksPage() {
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => runAutoAssign(open)}>
                     介助員を自動割付
                   </Btn>
-                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => window.print()}>
+                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!printLayoutsOn} onClick={() => window.print()}>
                     印刷する
                   </Btn>
-                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} />
+                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
+                </div>
+                <div className="rounded-xl border border-zinc-200 bg-white p-3">
+                  <p className="text-sm font-bold">今週の予定（曜日別・任意）</p>
+                  <p className="mt-0.5 text-xs text-zinc-400">学校行事など、その週だけのメモです（毎週入力し直します）。</p>
+                  <div className="mt-2 grid grid-cols-5 gap-1">
+                    {DAYS.map((d, i) => (
+                      <input
+                        key={d}
+                        defaultValue={open.dayNotes?.[i] ?? ""}
+                        onBlur={(e) => setDayNote(open.id, i, e.target.value)}
+                        placeholder={d}
+                        aria-label={`今週の予定（${d}曜）`}
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-1 py-2 text-center text-xs focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+                      />
+                    ))}
+                  </div>
                 </div>
                 <div className="rounded-xl border border-zinc-200 bg-white p-3">
                   <p className="text-sm font-bold">今週の介助員担当（毎週変更可）</p>
@@ -294,6 +337,7 @@ export default function WeeksPage() {
                       { key: "overview", label: "全体一覧" },
                       { key: "exchange", label: "交流クラス別" },
                       { key: "aides", label: "介助員別" },
+                      { key: "classDaily", label: "クラス別(日ごと)" },
                     ] as const
                   ).map((l) => (
                     <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
@@ -307,6 +351,9 @@ export default function WeeksPage() {
                     </label>
                   ))}
                 </div>
+                {layouts.classDaily ? (
+                  <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
                     <button
@@ -602,7 +649,7 @@ function WeekPrint({
             ? daySections({ week: w, students, aides, classes }).map((sec, si) => (
                 <div key={si} className={si < 5 ? "break-after-page" : undefined}>
                   <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
-                  <p className="mt-1 text-sm font-bold">{sec.weekday}（${sec.date}）</p>
+                  <p className="mt-1 text-sm font-bold">{sec.weekday}（{sec.date}）</p>
                   <table className="mt-1 w-full border-collapse text-xs">
                     <thead>
                       <tr>

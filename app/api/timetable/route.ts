@@ -1,4 +1,4 @@
-import { checkContentLength } from "@/lib/api-guard";
+import { BodyTooLargeError, boundRequestBody, bodyTooLargeMessage, checkContentLength } from "@/lib/api-guard";
 import { emptyTimetable } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -51,12 +51,15 @@ export async function POST(request: Request) {
   }
   let image: File | null = null;
   try {
-    const form = await request.formData();
+    const form = await boundRequestBody(request, MAX_BODY_BYTES).formData();
     const v = form.get("image");
     if (v && typeof v === "object" && typeof (v as File).arrayBuffer === "function") {
       image = v as File;
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return Response.json({ ok: false, error: bodyTooLargeMessage(err.maxBytes) }, { status: 413 });
+    }
     return Response.json({ ok: false, error: "リクエストの形式が不正です" }, { status: 400 });
   }
   if (!image) {

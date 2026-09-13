@@ -13,6 +13,7 @@ export default function ExportButtons({
   layouts,
   layoutsOn,
   onError,
+  onSuccess,
 }: {
   week: WeekPlan;
   students: Student[];
@@ -21,6 +22,7 @@ export default function ExportButtons({
   layouts: WeekExportLayouts;
   layoutsOn: boolean;
   onError: (msg: string | null) => void;
+  onSuccess?: (format: "pdf" | "xlsx" | "docx") => void;
 }) {
   const [busy, setBusy] = useState<"pdf" | "xlsx" | "docx" | null>(null);
 
@@ -46,6 +48,7 @@ export default function ExportButtons({
       a.click();
       a.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      onSuccess?.(format);
     } catch (err) {
       onError(err instanceof Error ? err.message : "エクスポートに失敗しました");
     } finally {

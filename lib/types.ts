@@ -24,6 +24,8 @@ export type ExchangeClass = {
   timetable: SlotContent[][];
   // 朝活動（曜日別・任意）
   morning?: string[];
+  // 下校時刻（曜日別・任意、"14:20" 形式）
+  dismissal?: string[];
   // 連絡等（任意）
   notice?: string;
   updatedAt: number;
@@ -78,6 +80,8 @@ export type WeekPlan = {
   posts?: WeekAidePost[];
   // 欠席（studentId → 曜日index配列）
   absent?: Record<string, number[]>;
+  // その週だけの行事・予定（曜日別・任意、学校全体向けのメモ）
+  dayNotes?: string[];
   createdAt: number;
   updatedAt: number;
 };

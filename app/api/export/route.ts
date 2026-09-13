@@ -1,7 +1,7 @@
 import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, normalizeLayouts, sanitizeFileName } from "@/lib/export";
 import { buildWeekCells } from "@/lib/schedule";
 import { isValidAide, isValidClass, isValidStudent, isValidWeek } from "@/lib/storage";
-import { checkContentLength } from "@/lib/api-guard";
+import { BodyTooLargeError, boundRequestBody, bodyTooLargeMessage, checkContentLength } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 
@@ -24,8 +24,11 @@ export async function POST(request: Request) {
   }
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await boundRequestBody(request, MAX_BODY_BYTES).json();
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return Response.json({ ok: false, error: bodyTooLargeMessage(err.maxBytes) }, { status: 413 });
+    }
     return Response.json({ ok: false, error: "リクエストの形式が不正です" }, { status: 400 });
   }
   const { format, data, layouts: rawLayouts } = (body ?? {}) as { format?: string; data?: unknown; layouts?: unknown };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Btn, Card, Field, Notice, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, emptyTimetable, type ExchangeClass, type SlotContent } from "@/lib/types";
 import { K_CLASSES, K_STUDENTS, loadClasses, loadStudents, makeId, saveClasses, saveStudents } from "@/lib/storage";
@@ -38,12 +38,21 @@ export default function ClassesPage() {
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
   const [morning, setMorning] = useState<string[]>(["", "", "", "", ""]);
+  const [dismissal, setDismissal] = useState<string[]>(["", "", "", "", ""]);
   const [notice, setNotice] = useState("");
   const [table, setTable] = useState<SlotContent[][]>(() => emptyTimetable());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // 保存完了メッセージは編集カードの外（一覧側）でも見えるよう、数秒で自動的に消す
+  useEffect(() => {
+    if (!savedNotice) return;
+    const t = setTimeout(() => setSavedNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [savedNotice]);
 
   function persist(next: ExchangeClass[]) {
     if (!saveClasses(next)) {
@@ -58,6 +67,7 @@ export default function ClassesPage() {
     setName("");
     setGrade("");
     setMorning(["", "", "", "", ""]);
+    setDismissal(["", "", "", "", ""]);
     setNotice("");
     setTable(emptyTimetable());
     setError(null);
@@ -70,6 +80,9 @@ export default function ClassesPage() {
     setGrade(item.grade);
     setMorning(
       Array.from({ length: 5 }, (_, i) => (Array.isArray(item.morning) ? item.morning[i] ?? "" : "")),
+    );
+    setDismissal(
+      Array.from({ length: 5 }, (_, i) => (Array.isArray(item.dismissal) ? item.dismissal[i] ?? "" : "")),
     );
     setNotice(typeof item.notice === "string" ? item.notice : "");
     setTable(item.timetable.map((row) => row.map((c) => ({ ...c }))));
@@ -88,14 +101,15 @@ export default function ClassesPage() {
     }
     const now = Date.now();
     const morningClean = morning.map((m) => m.trim());
+    const dismissalClean = dismissal.map((m) => m.trim());
     const noticeClean = notice.trim() || undefined;
     if (editingId === "new") {
-      persist([{ id: makeId(), name: name.trim(), grade: grade.trim(), timetable: table, morning: morningClean, notice: noticeClean, updatedAt: now }, ...items]);
+      persist([{ id: makeId(), name: name.trim(), grade: grade.trim(), timetable: table, morning: morningClean, dismissal: dismissalClean, notice: noticeClean, updatedAt: now }, ...items]);
     } else if (editingId) {
-      persist(items.map((x) => (x.id === editingId ? { ...x, name: name.trim(), grade: grade.trim(), timetable: table, morning: morningClean, notice: noticeClean, updatedAt: now } : x)));
+      persist(items.map((x) => (x.id === editingId ? { ...x, name: name.trim(), grade: grade.trim(), timetable: table, morning: morningClean, dismissal: dismissalClean, notice: noticeClean, updatedAt: now } : x)));
     }
     setEditingId(null);
-    setMessage("保存しました");
+    setSavedNotice(editingId === "new" ? "登録しました" : "更新しました");
   }
 
   function remove(id: string) {
@@ -108,6 +122,7 @@ export default function ClassesPage() {
       refreshStored(K_STUDENTS, loadStudents);
     }
     if (editingId === id) setEditingId(null);
+    setSavedNotice("削除しました");
   }
 
   async function ingest(file: File) {
@@ -140,6 +155,8 @@ export default function ClassesPage() {
         </div>
         <Btn variant="secondary" onClick={startNew}>＋ 新しいクラス</Btn>
       </div>
+
+      {savedNotice ? <Notice tone="blue">{savedNotice}</Notice> : null}
 
       {items.length === 0 && editingId === null ? (
         <Card className="py-10 text-center text-sm text-zinc-500">
@@ -194,6 +211,21 @@ export default function ClassesPage() {
             <Field label="連絡等（任意）">
               <TextInput value={notice} onChange={(e) => setNotice(e.target.value)} placeholder="例：水曜は掃除なし" />
             </Field>
+          </div>
+          <div className="mt-4">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-700">下校時刻（曜日別・任意）</span>
+            <div className="grid grid-cols-5 gap-1">
+              {DAYS.map((d, i) => (
+                <input
+                  key={d}
+                  value={dismissal[i] ?? ""}
+                  onChange={(e) => setDismissal((prev) => prev.map((m, j) => (j === i ? e.target.value : m)))}
+                  placeholder="例：14:20"
+                  aria-label={`下校時刻（${d}曜）`}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-1 py-2 text-center text-xs focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+                />
+              ))}
+            </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <input

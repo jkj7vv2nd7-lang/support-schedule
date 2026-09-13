@@ -74,8 +74,10 @@ export function normalizeClass(x: ExchangeClass): ExchangeClass {
   const base = isCellArray(x.timetable) ? x : { ...x, timetable: emptyTimetable() };
   const morning = Array.isArray(base.morning) ? base.morning.map((m) => (typeof m === "string" ? m : "")) : [];
   while (morning.length < 5) morning.push("");
+  const dismissal = Array.isArray(base.dismissal) ? base.dismissal.map((m) => (typeof m === "string" ? m : "")) : [];
+  while (dismissal.length < 5) dismissal.push("");
   const notice = typeof base.notice === "string" && base.notice ? base.notice : undefined;
-  return { ...base, morning: morning.slice(0, 5), notice };
+  return { ...base, morning: morning.slice(0, 5), dismissal: dismissal.slice(0, 5), notice };
 }
 
 export function isValidStudent(x: unknown): x is Student {

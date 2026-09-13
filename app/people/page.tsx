@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Btn, Card, Field, Notice, Select, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeSlot, type Student } from "@/lib/types";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveAides, saveStudents, saveWeeks } from "@/lib/storage";
@@ -75,6 +75,13 @@ export default function PeoplePage() {
   const aides = useStored(K_AIDES, loadAides) ?? [];
   const classes = useStored(K_CLASSES, loadClasses) ?? [];
   const [error, setError] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!savedNotice) return;
+    const t = setTimeout(() => setSavedNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [savedNotice]);
 
   const [sName, setSName] = useState("");
   const [sClassId, setSClassId] = useState("");
@@ -102,6 +109,7 @@ export default function PeoplePage() {
       saveWeeks(detached.weeks);
       refreshStored(K_WEEKS, loadWeeks);
     }
+    setSavedNotice(`${st.name}を削除しました`);
   }
 
   function removeAide(a: Aide) {
@@ -112,6 +120,7 @@ export default function PeoplePage() {
       saveWeeks(detached.weeks);
       refreshStored(K_WEEKS, loadWeeks);
     }
+    setSavedNotice(`${a.name}を削除しました`);
   }
 
   function persistAides(next: Aide[]) {
@@ -139,26 +148,29 @@ export default function PeoplePage() {
   }
 
   function saveStudent() {
-    if (!sName.trim()) {
+    const trimmed = sName.trim();
+    if (!trimmed) {
       setError("児童名を入力してください");
       return;
     }
     setError(null);
+    const isDuplicate = students.some((x) => x.id !== editingStudent && x.name === trimmed);
     if (editingStudent) {
       persistStudents(
         students.map((x) =>
           x.id === editingStudent
-            ? { ...x, name: sName.trim(), exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined }
+            ? { ...x, name: trimmed, exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined }
             : x,
         ),
       );
     } else {
       persistStudents([
-        { id: makeId(), name: sName.trim(), exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined },
+        { id: makeId(), name: trimmed, exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined },
         ...students,
       ]);
     }
     resetStudentForm();
+    setSavedNotice(isDuplicate ? `${trimmed}を保存しました（同じ名前の児童が他にもいます）` : `${trimmed}を保存しました`);
   }
 
   function resetAideForm() {
@@ -168,17 +180,20 @@ export default function PeoplePage() {
   }
 
   function saveAide() {
-    if (!aName.trim()) {
+    const trimmed = aName.trim();
+    if (!trimmed) {
       setError("介助員名を入力してください");
       return;
     }
     setError(null);
+    const isDuplicate = aides.some((x) => x.id !== editingAide && x.name === trimmed);
     if (editingAide) {
-      persistAides(aides.map((x) => (x.id === editingAide ? { ...x, name: aName.trim(), offSlots: aOff } : x)));
+      persistAides(aides.map((x) => (x.id === editingAide ? { ...x, name: trimmed, offSlots: aOff } : x)));
     } else {
-      persistAides([{ id: makeId(), name: aName.trim(), offSlots: aOff }, ...aides]);
+      persistAides([{ id: makeId(), name: trimmed, offSlots: aOff }, ...aides]);
     }
     resetAideForm();
+    setSavedNotice(isDuplicate ? `${trimmed}を保存しました（同じ名前の介助員が他にもいます）` : `${trimmed}を保存しました`);
   }
 
   const classById = new Map(classes.map((c) => [c.id, c]));
@@ -194,6 +209,7 @@ export default function PeoplePage() {
         <p className="mt-1 text-sm text-zinc-500">支援児童の交流先と、介助員の勤務不可コマを登録します。</p>
       </div>
       {error ? <Notice tone="red">{error}</Notice> : null}
+      {savedNotice ? <Notice tone="blue">{savedNotice}</Notice> : null}
 
       <Card>
         <StepHeading step="児">支援児童</StepHeading>
