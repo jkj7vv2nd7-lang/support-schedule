@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
-import { addDays, daySections, formatWeek } from "@/lib/schedule";
+import { addDays, daySections, formatWeek, sortClasses } from "@/lib/schedule";
 
 export type WeekExportInput = {
   week: WeekPlan;
@@ -191,7 +191,7 @@ function classDaySheet(input: WeekExportInput, classId: string): { title: string
 // クラス×曜日 一覧（A4横1枚向け）: 児童名は出さず、クラス・時限ごとの教科／内容／担当のみ
 // 列は元の手書き時間割に合わせ、曜日ごとにまとめて（月:各クラス→火:各クラス…）並べる
 function classOverviewGrid(input: WeekExportInput): { header: string[]; rows: string[][] } {
-  const activeClasses = input.classes.filter((c) => input.students.some((s) => s.exchangeClassId === c.id));
+  const activeClasses = sortClasses(input.classes.filter((c) => input.students.some((s) => s.exchangeClassId === c.id)));
   const columns = DAYS.flatMap((d, day) => activeClasses.map((c) => ({ day, cls: c, label: `${d}　${c.name}` })));
   const header = ["時限", ...columns.map((col) => col.label)];
   const rows: string[][] = PERIODS.map((p) => [
@@ -305,7 +305,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     const ws5 = wb.addWorksheet("クラス別(日ごと)", { views: [{ showGridLines: false }] });
     ws5.pageSetup = pageSetup;
     ws5.addRow([title]).font = { bold: true, size: 13 };
-    for (const c of input.classes) {
+    for (const c of sortClasses(input.classes)) {
       const sheet = classDaySheet(input, c.id);
       if (!sheet) continue;
       ws5.addRow([]);
@@ -437,7 +437,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     }
   }
   if (layouts.classDaily) {
-    for (const c of input.classes) {
+    for (const c of sortClasses(input.classes)) {
       const sheet = classDaySheet(input, c.id);
       if (!sheet) continue;
       needBreak();
@@ -749,7 +749,7 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
     }
   }
   if (layouts.classDaily) {
-    for (const cls of input.classes) {
+    for (const cls of sortClasses(input.classes)) {
       const sheet = classDaySheet(input, cls.id);
       if (!sheet) continue;
       needBreak();

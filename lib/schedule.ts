@@ -167,6 +167,22 @@ function absentDaysOf(week: WeekPlan, sid: string): number[] {
   return Array.isArray(days) ? days.filter((d): d is number => typeof d === "number") : [];
 }
 
+// クラス名に含まれる数字（学年・組番号）で自然な並び順にする（例：3年2組 → 4年1組 → 4年2組 → 5年1組）
+export function sortClasses<T extends { name: string }>(classes: T[]): T[] {
+  const numbersIn = (s: string): number[] => (s.match(/\d+/g) ?? []).map(Number);
+  return [...classes].sort((a, b) => {
+    const an = numbersIn(a.name);
+    const bn = numbersIn(b.name);
+    const len = Math.max(an.length, bn.length);
+    for (let i = 0; i < len; i++) {
+      const av = an[i] ?? -1;
+      const bv = bn[i] ?? -1;
+      if (av !== bv) return av - bv;
+    }
+    return a.name.localeCompare(b.name, "ja");
+  });
+}
+
 // 交流クラス別：曜日ごとのまとめ（1曜日＝1表：行=クラス＋支援学級、列=時限）
 export type DaySectionRow = { label: string; cells: string[] };
 export type DaySection = { day: number; weekday: string; date: string; rows: DaySectionRow[] };
@@ -179,10 +195,11 @@ export type WeekDayInput = {
 };
 
 export function daySections(input: WeekDayInput): DaySection[] {
+  const classes = sortClasses(input.classes);
   return DAYS.map((d, day) => {
     const date = addDays(input.week.weekStart, day).slice(5).replace("-", "/");
     const rows: DaySectionRow[] = [];
-    for (const cls of input.classes) {
+    for (const cls of classes) {
       const cells = PERIODS.map((p) => {
         const key = slotKey(day, p);
         const inClass = input.students.filter((s) => {
