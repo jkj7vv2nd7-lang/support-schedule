@@ -13,7 +13,7 @@ export type WeekExportInput = {
   classes: ExchangeClass[];
 };
 
-export type WeekExportLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean; classDaily: boolean };
+export type WeekExportLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean; classDaily: boolean; classOverview: boolean };
 
 export function normalizeLayouts(v: unknown): WeekExportLayouts {
   const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
@@ -23,6 +23,7 @@ export function normalizeLayouts(v: unknown): WeekExportLayouts {
     exchange: o.exchange !== false,
     aides: o.aides !== false,
     classDaily: o.classDaily === true,
+    classOverview: o.classOverview === true,
   };
 }
 
@@ -187,6 +188,34 @@ function classDaySheet(input: WeekExportInput, classId: string): { title: string
   return { title, header, rows };
 }
 
+// クラス×曜日 一覧（A4横1枚向け）: 児童名は出さず、クラス・時限ごとの教科／内容／担当のみ
+// 列は元の手書き時間割に合わせ、曜日ごとにまとめて（月:各クラス→火:各クラス…）並べる
+function classOverviewGrid(input: WeekExportInput): { header: string[]; rows: string[][] } {
+  const activeClasses = input.classes.filter((c) => input.students.some((s) => s.exchangeClassId === c.id));
+  const columns = DAYS.flatMap((d, day) => activeClasses.map((c) => ({ day, cls: c, label: `${d}　${c.name}` })));
+  const header = ["時限", ...columns.map((col) => col.label)];
+  const rows: string[][] = PERIODS.map((p) => [
+    `${p}`,
+    ...columns.map(({ day, cls }) => {
+      const slot = cls.timetable[day]?.[p - 1];
+      const lines: string[] = [];
+      if (slot?.subject) lines.push(slot.subject);
+      if (slot?.content) lines.push(slot.content);
+      const staffSet = new Set<string>();
+      for (const s of input.students) {
+        if (s.exchangeClassId !== cls.id) continue;
+        const c = input.week.cells[s.id]?.[slotKey(day, p)];
+        if (c?.classId !== cls.id) continue;
+        const staff = staffOf(input.aides, c.teacher ?? "", c.aideId ?? null);
+        if (staff) staffSet.add(staff);
+      }
+      if (staffSet.size > 0) lines.push(Array.from(staffSet).join("・"));
+      return lines.join("\n");
+    }),
+  ]);
+  return { header, rows };
+}
+
 /* ============================== Excel ============================== */
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
@@ -201,7 +230,7 @@ function maxLineLength(text: string): number {
   return Math.max(0, ...text.split("\n").map((l) => l.length));
 }
 
-export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false }): Promise<Buffer> {
+export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const putTable = (ws: ExcelJS.Worksheet, header: string[], rows: string[][]) => {
@@ -284,6 +313,14 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       putTable(ws5, sheet.header, sheet.rows);
     }
   }
+  if (layouts.classOverview) {
+    const ws6 = wb.addWorksheet("クラス×曜日 一覧", { views: [{ showGridLines: false }] });
+    // A4横1枚に収まるよう、幅・高さとも1ページに強制的に収縮する
+    ws6.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { top: 0.3, bottom: 0.3, left: 0.25, right: 0.25, header: 0.15, footer: 0.15 } };
+    ws6.addRow([title]).font = { bold: true, size: 13 };
+    const grid = classOverviewGrid(input);
+    putTable(ws6, grid.header, grid.rows);
+  }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
@@ -306,7 +343,7 @@ function docxColumnWidths(colCount: number): number[] {
   return widths;
 }
 
-function docxTable(header: string[], rows: string[][]) {
+function docxTable(header: string[], rows: string[][], fontSize = 18) {
   const colCount = Math.max(header.length, 1, ...rows.map((r) => r.length));
   const widths = docxColumnWidths(colCount);
   const cell = (text: string, isHeader: boolean, w: number, zebra: boolean) =>
@@ -319,7 +356,7 @@ function docxTable(header: string[], rows: string[][]) {
       children: text.split("\n").map(
         (line, i) =>
           new Paragraph({
-            children: [new TextRun({ text: line || " ", bold: isHeader, size: 18, font: FONT })],
+            children: [new TextRun({ text: line || " ", bold: isHeader, size: fontSize, font: FONT })],
             spacing: { after: 0 },
             keepLines: true,
             ...(i === 0 ? {} : { spacing: { before: 20, after: 0 } }),
@@ -339,7 +376,7 @@ function pageBreakPara() {
   return new Paragraph({ children: [new PageBreak()] });
 }
 
-export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false }): Promise<Buffer> {
+export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const children: Array<Paragraph | Table> = [
     new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 30, font: FONT })], spacing: { after: 80 } }),
@@ -409,6 +446,15 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
         docxTable(sheet.header, sheet.rows),
       );
     }
+  }
+  if (layouts.classOverview) {
+    needBreak();
+    const grid = classOverviewGrid(input);
+    children.push(
+      new Paragraph({ children: [new TextRun({ text: "クラス×曜日 一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
+      // 列数が多くなりやすい表なので、1ページに収まりやすいよう小さめのフォントで組む（用紙サイズによっては複数ページに分かれる場合があります）
+      docxTable(grid.header, grid.rows, 13),
+    );
   }
   const doc = new Document({
     styles: { default: { document: { run: { font: FONT, size: 18 } } } },
@@ -569,7 +615,98 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][]) {
   c.y += 8;
 }
 
-export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false }): Promise<Buffer> {
+// A4横1枚に必ず収める専用の表描画。列が多くページをまたぎそうな場合は
+// フォントを段階的に縮小して、1ページの高さに収まるサイズを探す。
+function pdfSinglePageTable(c: PdfCtx, header: string[], rows: string[][]) {
+  const colCount = Math.max(header.length, 1, ...rows.map((r) => r.length));
+  const weights = columnWeights(colCount);
+  const widths = weights.map((w) => c.usable * w);
+  const maxHeight = 595.28 - c.top - 36; // 用紙下端の余白ぶんを差し引いた1ページの使用可能高さ
+  const pad = 3;
+
+  const measure = (fontSize: number, lineH: number) => {
+    c.doc.font(c.fontName).fontSize(fontSize);
+    const wrap = (text: string, i: number): string[] => {
+      const w = Math.max((widths[i] ?? c.usable / colCount) - pad * 2, 6);
+      const src = String(text ?? "");
+      if (!src) return [""];
+      const lines: string[] = [];
+      let line = "";
+      for (const ch of Array.from(src)) {
+        const candidate = line + ch;
+        if (line && c.doc.widthOfString(candidate) > w) {
+          lines.push(line);
+          line = ch;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) lines.push(line);
+      return lines.length > 0 ? lines : [""];
+    };
+    const rowH = (cells: string[]): number => Math.max(...cells.map((t, i) => wrap(t, i).length * lineH + pad * 2));
+    const headerH = header.length > 0 ? rowH(header) : 0;
+    const bodyH = rows.reduce((sum, r) => sum + rowH(r), 0);
+    return { wrap, rowH, headerH, bodyH, total: headerH + bodyH };
+  };
+
+  // 8ptから段階的に縮小し、1ページに収まる最小限のフォントサイズを探す
+  const candidates: [number, number][] = [
+    [8, 11],
+    [7, 9.5],
+    [6, 8],
+    [5.5, 7.2],
+    [5, 6.5],
+    [4.5, 6],
+  ];
+  let chosen = measure(candidates[candidates.length - 1][0], candidates[candidates.length - 1][1]);
+  let chosenSize = candidates[candidates.length - 1][0];
+  for (const [fontSize, lineH] of candidates) {
+    const m = measure(fontSize, lineH);
+    if (m.total <= maxHeight) {
+      chosen = m;
+      chosenSize = fontSize;
+      break;
+    }
+  }
+  c.doc.fontSize(chosenSize);
+
+  const drawRow = (cells: string[], isHeader: boolean, sy: number, h: number, zebra: boolean) => {
+    let x = c.left;
+    cells.forEach((txt, i) => {
+      const w = widths[i] ?? c.usable / colCount;
+      if (isHeader) {
+        c.doc.save();
+        c.doc.rect(x, sy, w, h).fill("#DBEAFE");
+        c.doc.restore();
+      } else if (zebra) {
+        c.doc.save();
+        c.doc.rect(x, sy, w, h).fill("#F4F6FB");
+        c.doc.restore();
+      }
+      c.doc.rect(x, sy, w, h).stroke("#BBBBBB");
+      c.doc.fillColor(isHeader ? "#1E3A8A" : "#1F1F1F");
+      const lineH = (h - pad * 2) / Math.max(chosen.wrap(txt, i).length, 1);
+      chosen.wrap(txt, i).forEach((line, li) => c.doc.text(line, x + pad, sy + pad + li * lineH, { width: w - pad * 2, lineBreak: false }));
+      x += w;
+    });
+  };
+
+  if (header.length > 0) {
+    drawRow(header, true, c.y, chosen.headerH, false);
+    c.y += chosen.headerH;
+  }
+  rows.forEach((r, ri) => {
+    const padded = [...r];
+    while (padded.length < colCount) padded.push("");
+    const h = chosen.rowH(padded);
+    drawRow(padded, false, c.y, h, ri % 2 === 1);
+    c.y += h;
+  });
+  c.y += 8;
+}
+
+export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
   const c = makePdf();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   pdfText(c, title, 14, 4);
@@ -619,6 +756,12 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
       pdfText(c, sheet.title, 11, 2);
       pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
     }
+  }
+  if (layouts.classOverview) {
+    needBreak();
+    pdfText(c, "クラス×曜日 一覧", 11, 2);
+    const grid = classOverviewGrid(input);
+    pdfSinglePageTable(c, grid.header, grid.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
   }
   return collectPdf(c.doc);
 }

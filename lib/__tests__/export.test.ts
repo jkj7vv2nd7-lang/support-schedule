@@ -54,7 +54,7 @@ describe("week export", () => {
   });
 
   it("layouts指定で表を絞れる", async () => {
-    const only = { sheets: false, overview: false, exchange: true, aides: false, classDaily: false };
+    const only = { sheets: false, overview: false, exchange: true, aides: false, classDaily: false, classOverview: false };
     expect((await buildWeekDocx(input(), only)).length).toBeGreaterThan(0);
     expect((await buildWeekXlsx(input(), only)).length).toBeGreaterThan(0);
     const buf = await buildWeekPdf(input(), only);
@@ -62,7 +62,7 @@ describe("week export", () => {
   });
 
   it("介助員別が出力される", async () => {
-    const only = { sheets: false, overview: false, exchange: false, aides: true, classDaily: false };
+    const only = { sheets: false, overview: false, exchange: false, aides: true, classDaily: false, classOverview: false };
     expect((await buildWeekDocx(input(), only)).length).toBeGreaterThan(0);
     expect((await buildWeekXlsx(input(), only)).length).toBeGreaterThan(0);
   });
@@ -71,7 +71,7 @@ describe("week export", () => {
     const data = input();
     data.week.absent = { s1: [0] };
     data.students = [{ ...data.students[0], notes: "アレルギーあり" }];
-    const buf = await buildWeekPdf(data, { sheets: true, overview: true, exchange: false, aides: false, classDaily: false });
+    const buf = await buildWeekPdf(data, { sheets: true, overview: true, exchange: false, aides: false, classDaily: false, classOverview: false });
     expect(buf.length).toBeGreaterThan(0);
     expect((await buildWeekDocx(data)).length).toBeGreaterThan(0);
     expect((await buildWeekXlsx(data)).length).toBeGreaterThan(0);

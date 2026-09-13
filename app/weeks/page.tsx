@@ -33,8 +33,8 @@ export default function WeeksPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeStudent, setActiveStudent] = useState<string>("");
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
-  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false });
-  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily;
+  const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false });
+  const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   // 「クラス別(日ごと)」はPDF/Excel/Wordのみ対応（ブラウザ印刷ビューは未対応）なので、印刷ボタンの活性判定には含めない
   const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides;
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export default function WeeksPage() {
     return () => clearTimeout(t);
   }, [notice]);
 
-  function toggleLayout(key: "sheets" | "overview" | "exchange" | "aides" | "classDaily") {
+  function toggleLayout(key: "sheets" | "overview" | "exchange" | "aides" | "classDaily" | "classOverview") {
     setLayouts((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
@@ -338,6 +338,7 @@ export default function WeeksPage() {
                       { key: "exchange", label: "交流クラス別" },
                       { key: "aides", label: "介助員別" },
                       { key: "classDaily", label: "クラス別(日ごと)" },
+                      { key: "classOverview", label: "クラス×曜日 一覧(1枚)" },
                     ] as const
                   ).map((l) => (
                     <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
@@ -353,6 +354,9 @@ export default function WeeksPage() {
                 </div>
                 {layouts.classDaily ? (
                   <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
+                ) : null}
+                {layouts.classOverview ? (
+                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」はPDF・Excel・Wordの書き出しのみ対応です（児童名は載らず、A4横1枚に収まるよう自動で文字が縮小されます）</p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
