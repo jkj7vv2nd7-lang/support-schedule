@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyRoster, autoAssignAides, buildWeekCells, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
+import { applyRoster, autoAssignAides, buildWeekCells, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
+import { exportBackup, importBackup } from "@/lib/storage";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
 function cls(): ExchangeClass {
@@ -128,5 +129,65 @@ describe("detach", () => {
     expect(changed).toBe(true);
     expect(students[0].exchangeClassId).toBeNull();
     expect(students[0].exchangeSlots).toEqual([]);
+  });
+});
+
+describe("classOverviewTable", () => {
+  function week(): WeekPlan {
+    const cells = buildWeekCells([student()], [cls()]);
+    cells.s1[slotKey(0, 1)].teacher = "田中";
+    return {
+      id: "w1",
+      weekStart: "2026-09-14",
+      cells,
+      dayNotes: ["", "運動会予行", "", "", ""],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+  }
+
+  it("参考様式の行構成（日・曜日・予定・時限）になる", () => {
+    const t = classOverviewTable({ week: week(), students: [student()], aides: [], classes: [{ ...cls(), morning: ["朝清掃", "", "", "", ""], notice: "水曜は掃除なし", dismissal: ["14:20", "", "", "", ""] }] });
+    expect(t.header[0]).toBe("時限");
+    expect(t.header[1]).toContain("3年2組");
+    const firsts = t.rows.map((r) => r[0]);
+    expect(firsts).toEqual(["日", "曜日", "予定", "朝活動", "1", "2", "3", "4", "5", "6", "連絡等", "下校時刻"]);
+    // 予定・朝活動・連絡等・下校時刻が反映される
+    expect(t.rows[2][1]).toBe("");
+    expect(t.rows[3][1]).toBe("朝清掃");
+    expect(t.rows.find((r) => r[0] === "連絡等")?.[1]).toBe("水曜は掃除なし");
+    expect(t.rows.find((r) => r[0] === "下校時刻")?.[1]).toBe("14:20");
+    // 担当が載る（教科＋担当）
+    expect(t.rows[4][1]).toContain("国語");
+    expect(t.rows[4][1]).toContain("田中");
+  });
+
+  it("空行（予定・朝活動など）は出さない", () => {
+    const w = week();
+    w.dayNotes = undefined;
+    const t = classOverviewTable({ week: w, students: [student()], aides: [], classes: [cls()] });
+    const firsts = t.rows.map((r) => r[0]);
+    expect(firsts).toEqual(["日", "曜日", "1", "2", "3", "4", "5", "6"]);
+  });
+
+  it("交流のないクラスは列に出さない", () => {
+    const other: ExchangeClass = { id: "c2", name: "4年1組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 };
+    const t = classOverviewTable({ week: week(), students: [student()], aides: [], classes: [cls(), other] });
+    expect(t.columns).toHaveLength(5);
+    expect(t.header).toHaveLength(6);
+  });
+});
+
+describe("backup", () => {
+  it("形式違い・空データは拒否し、正常データは受け入れる", () => {
+    expect(importBackup({ app: "other" }).ok).toBe(false);
+    expect(importBackup(null).ok).toBe(false);
+    expect(importBackup({ app: "support-schedule", classes: [], students: [], aides: [], weeks: [] }).ok).toBe(false);
+    const good = importBackup({ app: "support-schedule", version: 1, exportedAt: "2026-09-14", classes: [cls()], students: [student()], aides: [], weeks: [] });
+    expect(good.ok).toBe(true);
+    expect(good.counts).toMatchObject({ classes: 1, students: 1, aides: 0, weeks: 0 });
+    const exported = exportBackup();
+    expect(exported.app).toBe("support-schedule");
+    expect(Array.isArray(exported.classes)).toBe(true);
   });
 });

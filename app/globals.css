@@ -30,6 +30,9 @@ body {
   section { box-shadow: none !important; border: none !important; }
   table { break-inside: avoid; }
   tr, th, td { break-inside: avoid; page-break-inside: avoid; }
+  /* 1枚表（クラス×曜日 一覧）: A4横に収まるよう詰めて表示 */
+  .onepage-table { table-layout: fixed; width: 100%; font-size: 9px; line-height: 1.3; }
+  .onepage-table th, .onepage-table td { padding: 2px 3px; overflow-wrap: break-word; word-break: break-all; }
 }
 @page {
   size: A4 landscape;

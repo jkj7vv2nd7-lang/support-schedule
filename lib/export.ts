@@ -4,7 +4,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
-import { addDays, daySections, formatWeek, sortClasses } from "@/lib/schedule";
+import { addDays, classOverviewTable, daySections, formatWeek, sortClasses } from "@/lib/schedule";
 
 export type WeekExportInput = {
   week: WeekPlan;
@@ -170,7 +170,8 @@ function classDaySheet(input: WeekExportInput, classId: string): { title: string
         const staffSet = new Set<string>();
         for (const s of attendees) {
           const c = input.week.cells[s.id]?.[slotKey(day, p)];
-          if (c?.classId !== classId) continue;
+          if (!c || c.place !== "exchange") continue;
+          if ((c.classId ?? s.exchangeClassId) !== classId) continue;
           const staff = staffOf(input.aides, c.teacher ?? "", c.aideId ?? null);
           if (staff) staffSet.add(staff);
         }
@@ -188,32 +189,10 @@ function classDaySheet(input: WeekExportInput, classId: string): { title: string
   return { title, header, rows };
 }
 
-// クラス×曜日 一覧（A4横1枚向け）: 児童名は出さず、クラス・時限ごとの教科／内容／担当のみ
-// 列は元の手書き時間割に合わせ、曜日ごとにまとめて（月:各クラス→火:各クラス…）並べる
+// クラス×曜日 一覧（A4横1枚向け）: 本体は lib/schedule の classOverviewTable（印刷と共用）
 function classOverviewGrid(input: WeekExportInput): { header: string[]; rows: string[][] } {
-  const activeClasses = sortClasses(input.classes.filter((c) => input.students.some((s) => s.exchangeClassId === c.id)));
-  const columns = DAYS.flatMap((d, day) => activeClasses.map((c) => ({ day, cls: c, label: `${d}　${c.name}` })));
-  const header = ["時限", ...columns.map((col) => col.label)];
-  const rows: string[][] = PERIODS.map((p) => [
-    `${p}`,
-    ...columns.map(({ day, cls }) => {
-      const slot = cls.timetable[day]?.[p - 1];
-      const lines: string[] = [];
-      if (slot?.subject) lines.push(slot.subject);
-      if (slot?.content) lines.push(slot.content);
-      const staffSet = new Set<string>();
-      for (const s of input.students) {
-        if (s.exchangeClassId !== cls.id) continue;
-        const c = input.week.cells[s.id]?.[slotKey(day, p)];
-        if (c?.classId !== cls.id) continue;
-        const staff = staffOf(input.aides, c.teacher ?? "", c.aideId ?? null);
-        if (staff) staffSet.add(staff);
-      }
-      if (staffSet.size > 0) lines.push(Array.from(staffSet).join("・"));
-      return lines.join("\n");
-    }),
-  ]);
-  return { header, rows };
+  const t = classOverviewTable(input);
+  return { header: t.header, rows: t.rows };
 }
 
 /* ============================== Excel ============================== */

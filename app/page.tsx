@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BackupButtons from "@/components/backup-buttons";
 import { Card } from "@/components/ui";
 
 const STEPS = [
@@ -52,8 +53,11 @@ export default function HomePage() {
         <h2 className="text-sm font-bold">先週コピーでさらに時短</h2>
         <p className="mt-1 text-sm leading-relaxed text-zinc-600">
           週の大半は変わりません。「先週コピー」で複写し、変更点だけ直す運用ができます。
-          データはこのブラウザに保存されます。
+          データはこのブラウザに保存されます。他の先生と共有したり、別の端末に移したりする場合はバックアップをご利用ください。
         </p>
+        <div className="no-print">
+          <BackupButtons />
+        </div>
       </Card>
     </div>
   );

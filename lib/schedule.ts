@@ -183,6 +183,63 @@ export function sortClasses<T extends { name: string }>(classes: T[]): T[] {
   });
 }
 
+// クラス×曜日 一覧（A4横1枚向け）: 参考様式の主表と同じ構成。
+// 列=曜日×クラス、行=日/曜日/予定/朝活動/時限/連絡等/下校時刻。児童名は出さない。
+export type OverviewColumn = { day: number; weekday: string; classId: string; className: string; label: string };
+export type OverviewTable = { columns: OverviewColumn[]; header: string[]; rows: string[][] };
+
+export function classOverviewTable(input: WeekDayInput): OverviewTable {
+  const activeClasses = sortClasses(input.classes.filter((c) => input.students.some((s) => s.exchangeClassId === c.id)));
+  const byClass = new Map(activeClasses.map((c) => [c.id, c]));
+  const columns: OverviewColumn[] = DAYS.flatMap((d, day) =>
+    activeClasses.map((c) => ({ day, weekday: d, classId: c.id, className: c.name, label: `${d}　${c.name}` })),
+  );
+  const header = ["時限", ...columns.map((col) => col.label)];
+  const staffOf = (cls: ExchangeClass, day: number, p: number): string => {
+    const key = slotKey(day, p);
+    const set = new Set<string>();
+    for (const s of input.students) {
+      if (s.exchangeClassId !== cls.id) continue;
+      const c = input.week.cells[s.id]?.[key];
+      if (!c || c.place !== "exchange") continue;
+      if ((c.classId ?? s.exchangeClassId) !== cls.id) continue;
+      const t = [c.teacher ?? "", aideName(input.aides, c.aideId ?? null)].filter(Boolean).join("・");
+      if (t) set.add(t);
+    }
+    return Array.from(set).join("・");
+  };
+  const rows: string[][] = [];
+  rows.push(["日", ...columns.map(({ day }) => addDays(input.week.weekStart, day).slice(5).replace("-", "/"))]);
+  rows.push(["曜日", ...columns.map(({ weekday }) => weekday)]);
+  const dayNotes = DAYS.map((_, day) => input.week.dayNotes?.[day] ?? "");
+  if (dayNotes.some((v) => v.trim())) rows.push(["予定", ...columns.map(({ day }) => dayNotes[day])]);
+  if (activeClasses.some((c) => (c.morning ?? []).some((v) => (v ?? "").trim()))) {
+    rows.push(["朝活動", ...columns.map(({ day, classId }) => byClass.get(classId)?.morning?.[day] ?? "")]);
+  }
+  for (const p of PERIODS) {
+    rows.push([
+      `${p}`,
+      ...columns.map(({ day, classId }) => {
+        const cls = byClass.get(classId);
+        const slot = cls?.timetable[day]?.[p - 1];
+        const lines: string[] = [];
+        if (slot?.subject) lines.push(slot.subject);
+        if (slot?.content) lines.push(slot.content);
+        const staff = cls ? staffOf(cls, day, p) : "";
+        if (staff) lines.push(staff);
+        return lines.join("\n");
+      }),
+    ]);
+  }
+  if (activeClasses.some((c) => (c.notice ?? "").trim())) {
+    rows.push(["連絡等", ...columns.map(({ classId }) => byClass.get(classId)?.notice ?? "")]);
+  }
+  if (activeClasses.some((c) => (c.dismissal ?? []).some((v) => (v ?? "").trim()))) {
+    rows.push(["下校時刻", ...columns.map(({ day, classId }) => byClass.get(classId)?.dismissal?.[day] ?? "")]);
+  }
+  return { columns, header, rows };
+}
+
 // 交流クラス別：曜日ごとのまとめ（1曜日＝1表：行=クラス＋支援学級、列=時限）
 export type DaySectionRow = { label: string; cells: string[] };
 export type DaySection = { day: number; weekday: string; date: string; rows: DaySectionRow[] };

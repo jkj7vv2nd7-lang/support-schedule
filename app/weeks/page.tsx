@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, daySections, formatWeek, mondayOf } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classOverviewTable, daySections, formatWeek, mondayOf } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -36,7 +36,7 @@ export default function WeeksPage() {
   const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false });
   const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   // 「クラス別(日ごと)」はPDF/Excel/Wordのみ対応（ブラウザ印刷ビューは未対応）なので、印刷ボタンの活性判定には含めない
-  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides;
+  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classOverview;
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -356,7 +356,7 @@ export default function WeeksPage() {
                   <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
                 ) : null}
                 {layouts.classOverview ? (
-                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」はPDF・Excel・Wordの書き出しのみ対応です（児童名は載らず、A4横1枚に収まるよう自動で文字が縮小されます）</p>
+                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」は児童名なしでA4横1枚に収まります（印刷ボタン・PDF対応。参考様式の主表と同じ構成です）</p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
@@ -517,7 +517,7 @@ export default function WeeksPage() {
   );
 }
 
-export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean };
+export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean; classDaily?: boolean; classOverview?: boolean };
 
 function WeekPrint({
   weeks,
@@ -538,12 +538,43 @@ function WeekPrint({
     <div className="hidden print:block">
       {weeks.map((w) => {
         const sheetStudents = students.filter((s) => w.cells[s.id]);
+        const overview = layouts.classOverview ? classOverviewTable({ week: w, students, aides, classes }) : null;
         return (
           <div key={w.id}>
+            {overview && overview.columns.length > 0 ? (
+              <div className={layouts.sheets || layouts.overview || layouts.exchange || layouts.aides ? "break-after-page" : undefined}>
+                <h2 className="text-lg font-bold">
+                  週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
+                </h2>
+                <h3 className="mt-2 text-sm font-bold">クラス×曜日 一覧</h3>
+                <table className="onepage-table mt-1 w-full border-collapse">
+                  <thead>
+                    <tr>
+                      {overview.header.map((h, hi) => (
+                        <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : "border px-1 py-1"}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overview.rows.map((row, ri) => (
+                      <tr key={ri}>
+                        {row.map((cell, ci) => (
+                          <td key={ci} className={ci === 0 ? "border px-1 py-1 text-center font-bold" : "border px-1 py-1 align-top"}>
+                            {cell.split("\n").map((line, li) => (
+                              <span key={li} className="block">{line || " "}</span>
+                            ))}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
             {layouts.sheets
               ? sheetStudents.map((s, si) => (
                   <div key={s.id} className={laterAfterSheets(si < sheetStudents.length - 1) ? "break-after-page" : undefined}>
-                {si === 0 ? (
+                {si === 0 && !overview ? (
                   <h2 className="text-lg font-bold">
                     週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
                   </h2>
@@ -650,8 +681,8 @@ function WeekPrint({
           </div>
           ) : null}
           {layouts.exchange
-            ? daySections({ week: w, students, aides, classes }).map((sec, si) => (
-                <div key={si} className={si < 5 ? "break-after-page" : undefined}>
+            ? daySections({ week: w, students, aides, classes }).map((sec, si, arr) => (
+                <div key={si} className={si < arr.length - 1 ? "break-after-page" : undefined}>
                   <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
                   <p className="mt-1 text-sm font-bold">{sec.weekday}（{sec.date}）</p>
                   <table className="mt-1 w-full border-collapse text-xs">
@@ -665,10 +696,11 @@ function WeekPrint({
                     <tbody>
                       {sec.rows.map((row, ri) => (
                         <tr key={ri}>
-                          {["クラス", ...row.cells].map((cell, ci) => (
+                          <td className="border px-1 py-1 align-top font-bold">{row.label}</td>
+                          {row.cells.map((cell, ci) => (
                             <td key={ci} className="border px-1 py-1 align-top">
                               {cell.split("\n").map((line, li) => (
-                                <span key={li} className="block">{line || " "}</span>
+                                <span key={li} className="block">{line || " "}</span>
                               ))}
                             </td>
                           ))}

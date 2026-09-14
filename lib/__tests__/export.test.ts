@@ -76,6 +76,28 @@ describe("week export", () => {
     expect((await buildWeekDocx(data)).length).toBeGreaterThan(0);
     expect((await buildWeekXlsx(data)).length).toBeGreaterThan(0);
   });
+
+  it("クラス×曜日一覧だけならPDFは1ページに収まる", async () => {
+    const data = input();
+    // 参考様式に近い3クラス構成にする
+    const tt2 = emptyTimetable();
+    tt2[0][0] = { subject: "算数", content: "" };
+    data.classes = [
+      data.classes[0],
+      { id: "c2", name: "4年1組", grade: "4年", timetable: tt2, morning: ["朝清掃", "", "", "", ""], notice: "連絡あり", dismissal: ["14:20", "15:10", "14:20", "15:10", "14:20"], updatedAt: 1 },
+      { id: "c3", name: "4年2組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 },
+    ];
+    data.students = [
+      data.students[0],
+      { id: "s2", name: "佐藤", exchangeClassId: "c2", exchangeSlots: [{ day: 0, period: 1 }] },
+      { id: "s3", name: "鈴木", exchangeClassId: "c3", exchangeSlots: [{ day: 0, period: 1 }] },
+    ];
+    const only = { sheets: false, overview: false, exchange: false, aides: false, classDaily: false, classOverview: true };
+    const buf = await buildWeekPdf(data, only);
+    expect(buf.length).toBeGreaterThan(0);
+    const pages = buf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? [];
+    expect(pages.length).toBe(1);
+  });
 });
 
 describe("sanitizeFileName", () => {

@@ -111,3 +111,47 @@ export const saveClasses = (v: ExchangeClass[]) => save(K_CLASSES, v);
 export const saveStudents = (v: Student[]) => save(K_STUDENTS, v);
 export const saveAides = (v: Aide[]) => save(K_AIDES, v);
 export const saveWeeks = (v: WeekPlan[]) => save(K_WEEKS, v);
+
+// バックアップ（複数教員での受け渡し用）: 全データを1つのJSONにまとめる
+export type BackupData = {
+  app: "support-schedule";
+  version: 1;
+  exportedAt: string;
+  classes: ExchangeClass[];
+  students: Student[];
+  aides: Aide[];
+  weeks: WeekPlan[];
+};
+
+export function exportBackup(): BackupData {
+  return {
+    app: "support-schedule",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    classes: loadClasses(),
+    students: loadStudents(),
+    aides: loadAides(),
+    weeks: loadWeeks(),
+  };
+}
+
+export function importBackup(data: unknown): { ok: boolean; counts?: { classes: number; students: number; aides: number; weeks: number }; error?: string } {
+  if (!data || typeof data !== "object") return { ok: false, error: "ファイルの形式が不正です" };
+  const o = data as Record<string, unknown>;
+  if (o.app !== "support-schedule") return { ok: false, error: "このアプリのバックアップではありません" };
+  if (!Array.isArray(o.classes) || !Array.isArray(o.students) || !Array.isArray(o.aides) || !Array.isArray(o.weeks)) {
+    return { ok: false, error: "ファイルの形式が不正です" };
+  }
+  const classes = (o.classes as unknown[]).filter(isValidClass).map(normalizeClass);
+  const students = (o.students as unknown[]).filter(isValidStudent);
+  const aides = (o.aides as unknown[]).filter(isValidAide);
+  const weeks = (o.weeks as unknown[]).filter(isValidWeek);
+  if (classes.length + students.length + aides.length + weeks.length === 0) {
+    return { ok: false, error: "有効なデータがありませんでした" };
+  }
+  saveClasses(classes);
+  saveStudents(students);
+  saveAides(aides);
+  saveWeeks(weeks);
+  return { ok: true, counts: { classes: classes.length, students: students.length, aides: aides.length, weeks: weeks.length } };
+}
