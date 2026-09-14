@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 
   try {
     const layouts = normalizeLayouts(rawLayouts);
-    if (!layouts.sheets && !layouts.overview && !layouts.exchange && !layouts.aides) {
+    if (!layouts.sheets && !layouts.overview && !layouts.exchange && !layouts.aides && !layouts.classDaily && !layouts.classOverview) {
       return Response.json({ ok: false, error: "出力する表を1つ以上選んでください" }, { status: 400 });
     }
     // 登録後に追加された児童などのセル欠落を補完
