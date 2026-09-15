@@ -36,6 +36,7 @@ export default function BackupButtons() {
     setIsError(false);
     setMessage(null);
     if (!file) return;
+    if (!window.confirm("現在のデータを上書きして復元しますか？")) return;
     try {
       const text = await file.text();
       const result = importBackup(JSON.parse(text) as unknown);

@@ -536,16 +536,17 @@ function WeekPrint({
   layouts: PrintLayouts;
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
-  const laterAfterSheets = (hasMoreSheets: boolean) => hasMoreSheets || layouts.overview || layouts.exchange;
+  const laterAfterSheets = (hasMoreSheets: boolean) => hasMoreSheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily;
   return (
     <div className="hidden print:block">
       {weeks.map((w) => {
         const sheetStudents = students.filter((s) => w.cells[s.id]);
         const overview = layouts.classOverview ? classOverviewTable({ week: w, students, aides, classes }) : null;
+        const afterExchange = layouts.aides || layouts.classDaily;
         return (
           <div key={w.id}>
             {overview && overview.columns.length > 0 ? (
-              <div className={layouts.sheets || layouts.overview || layouts.exchange || layouts.aides ? "break-after-page" : undefined}>
+              <div className={layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily ? "break-after-page" : undefined}>
                 <h2 className="text-lg font-bold">
                   週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
                 </h2>
@@ -634,7 +635,7 @@ function WeekPrint({
             ))
           : null}
           {layouts.overview ? (
-            <div className={layouts.exchange ? "break-after-page" : undefined}>
+            <div className={layouts.exchange || layouts.aides || layouts.classDaily ? "break-after-page" : undefined}>
             <h3 className="mt-6 text-sm font-bold">全体一覧（介助員）</h3>
             <table className="print-grid mt-1 w-full border-collapse text-xs">
               <thead>
@@ -685,7 +686,7 @@ function WeekPrint({
           ) : null}
           {layouts.exchange
             ? daySections({ week: w, students, aides, classes }).map((sec, si, arr) => (
-                <div key={si} className={si < arr.length - 1 ? "break-after-page" : undefined}>
+                <div key={si} className={si < arr.length - 1 || afterExchange ? "break-after-page" : undefined}>
                   <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
                   <p className="mt-1 text-sm font-bold">{sec.weekday}（{sec.date}）</p>
                   <table className="print-grid mt-1 w-full border-collapse text-xs">
@@ -716,7 +717,7 @@ function WeekPrint({
             : null}
           {layouts.aides
             ? aides.map((a, ai) => {
-                const moreAfter = aides.slice(ai + 1).length > 0;
+                const moreAfter = aides.slice(ai + 1).length > 0 || layouts.classDaily;
                 return (
                   <div key={a.id} className={moreAfter ? "break-after-page" : undefined}>
                     <h3 className="mt-6 text-sm font-bold">{a.name}（介助）</h3>
@@ -769,11 +770,11 @@ function WeekPrint({
               })
             : null}
           {layouts.classDaily
-            ? sortClasses(classes).map((c) => {
-                const sheet = classDayTable({ week: w, students, aides, classes }, c.id);
-                if (!sheet) return null;
-                return (
-                  <div key={c.id}>
+            ? sortClasses(classes)
+                .map((c) => ({ c, sheet: classDayTable({ week: w, students, aides, classes }, c.id) }))
+                .filter((x): x is { c: (typeof classes)[number]; sheet: NonNullable<ReturnType<typeof classDayTable>> } => x.sheet !== null)
+                .map(({ c, sheet }, ti, tables) => (
+                  <div key={c.id} className={ti < tables.length - 1 ? "break-after-page" : undefined}>
                     <h3 className="mt-6 text-sm font-bold">{sheet.title}</h3>
                     <table className="print-grid mt-1 w-full border-collapse text-xs">
                       <thead>
@@ -798,8 +799,7 @@ function WeekPrint({
                       </tbody>
                     </table>
                   </div>
-                );
-              })
+                ))
             : null}
         </div>
       );
