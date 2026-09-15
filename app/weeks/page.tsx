@@ -551,7 +551,7 @@ function WeekPrint({
                   <thead>
                     <tr>
                       {overview.header.map((h, hi) => (
-                        <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : `border px-1 py-1${hi > 1 && overview.columns[hi - 1].day !== overview.columns[hi - 2].day ? " sep-day" : ""}`}>{h}</th>
+                        <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : `border px-1 py-1${hi > 1 && overview.columns[hi - 1].day !== overview.columns[hi - 2].day ? " sep-day" : ""}${hi > 0 && (hi - 1 === overview.columns.length - 1 || overview.columns[hi].day !== overview.columns[hi - 1].day) ? " sep-day-r" : ""}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -559,7 +559,7 @@ function WeekPrint({
                     {overview.rows.map((row, ri) => (
                       <tr key={ri}>
                         {row.map((cell, ci) => (
-                          <td key={ci} className={ci === 0 ? "border px-1 py-1 text-center font-bold" : `border px-1 py-1 align-top${ci > 1 && overview.columns[ci - 1].day !== overview.columns[ci - 2].day ? " sep-day" : ""}`}>
+                          <td key={ci} className={ci === 0 ? "border px-1 py-1 text-center font-bold" : `border px-1 py-1 align-top${ci > 1 && overview.columns[ci - 1].day !== overview.columns[ci - 2].day ? " sep-day" : ""}${ci > 0 && (ci - 1 === overview.columns.length - 1 || overview.columns[ci].day !== overview.columns[ci - 1].day) ? " sep-day-r" : ""}`}>
                             {cell.split("\n").map((line, li) => (
                               <span key={li} className="block">{line || " "}</span>
                             ))}
@@ -591,7 +591,7 @@ function WeekPrint({
                   </thead>
                   <tbody>
                     {DAYS.map((d, day) => (
-                      <tr key={d}>
+                      <tr key={d} className="sep-day sep-day-b">
                         <td className="border px-1 py-1 text-center font-bold">
                           {d}
                           <span className="block text-[10px] font-normal text-zinc-500">
@@ -647,7 +647,7 @@ function WeekPrint({
                 {DAYS.flatMap((d, day) => {
                   const rows = students.filter((s) => w.cells[s.id]);
                   return rows.map((s, ri) => (
-                    <tr key={`${day}-${s.id}`} className={day > 0 && ri === 0 ? "sep-day" : undefined}>
+                    <tr key={`${day}-${s.id}`} className={`${day > 0 && ri === 0 ? "sep-day" : ""}${ri === rows.length - 1 ? " sep-day-b" : ""}`}>
                       {ri === 0 ? (
                         <td rowSpan={rows.length} className="border px-1 py-1 text-center font-bold">
                           {d}
@@ -728,7 +728,7 @@ function WeekPrint({
                       </thead>
                       <tbody>
                         {DAYS.map((d, day) => (
-                          <tr key={d}>
+                          <tr key={d} className="sep-day sep-day-b">
                             <td className="border px-1 py-1 text-center font-bold">
                               {d}
                               <span className="block text-[10px] font-normal text-zinc-500">

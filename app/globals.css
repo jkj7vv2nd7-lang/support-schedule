@@ -33,12 +33,14 @@ body {
   /* 1枚表（クラス×曜日 一覧）: A4横に収まるよう詰めて表示 */
   .onepage-table { table-layout: fixed; width: 100%; font-size: 9px; line-height: 1.3; }
   .onepage-table th, .onepage-table td { padding: 2px 3px; overflow-wrap: break-word; word-break: break-all; }
-  /* 印刷表の区切り強調：均等幅＋太罫グリッド、曜日・時限の境目はさらに太く */
-  .print-grid { table-layout: fixed; }
+  /* 印刷表の区切り強調：均等幅＋太罫グリッド、曜日ブロックは四辺で囲む */
+  .print-grid { table-layout: fixed; border: 3px solid #111 !important; }
   .print-grid th, .print-grid td { border: 2px solid #333 !important; overflow-wrap: break-word; }
   .print-grid thead th { border-bottom: 3px solid #111 !important; }
   .print-grid th.sep-day, .print-grid td.sep-day { border-left: 3px solid #111 !important; }
+  .print-grid th.sep-day-r, .print-grid td.sep-day-r { border-right: 3px solid #111 !important; }
   .print-grid tr.sep-day > th, .print-grid tr.sep-day > td { border-top: 3px solid #111 !important; }
+  .print-grid tr.sep-day-b > th, .print-grid tr.sep-day-b > td { border-bottom: 3px solid #111 !important; }
 }
 @page {
   size: A4 landscape;

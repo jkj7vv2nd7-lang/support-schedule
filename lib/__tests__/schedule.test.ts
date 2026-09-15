@@ -176,6 +176,18 @@ describe("classOverviewTable", () => {
     expect(t.columns).toHaveLength(5);
     expect(t.header).toHaveLength(6);
   });
+
+  it("曜日ブロックの列位置が分かる", () => {
+    const c2: ExchangeClass = { id: "c2", name: "4年1組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 };
+    const s2: Student = { id: "s2", name: "佐藤", exchangeClassId: "c2", exchangeSlots: [] };
+    const t = classOverviewTable({ week: week(), students: [student(), s2], aides: [], classes: [cls(), c2] });
+    // 2クラス×5曜日=10列。曜日ごとに開始列と終了列が分かる
+    expect(t.columns).toHaveLength(10);
+    const starts = t.columns.map((c, i) => (i > 0 && c.day !== t.columns[i - 1].day ? i + 1 : -1)).filter((i) => i > 0);
+    const ends = t.columns.map((c, i) => (i === t.columns.length - 1 || t.columns[i + 1].day !== c.day ? i + 1 : -1)).filter((i) => i > 0);
+    expect(starts).toEqual([3, 5, 7, 9]);
+    expect(ends).toEqual([2, 4, 6, 8, 10]);
+  });
 });
 
 describe("backup", () => {

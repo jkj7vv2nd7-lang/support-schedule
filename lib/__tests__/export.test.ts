@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import ExcelJS from "exceljs";
 import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, sanitizeFileName, type WeekExportInput } from "@/lib/export";
 import { emptyTimetable } from "@/lib/types";
 
@@ -97,6 +98,28 @@ describe("week export", () => {
     expect(buf.length).toBeGreaterThan(0);
     const pages = buf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? [];
     expect(pages.length).toBe(1);
+  });
+
+  it("Excelの曜日境目と見出し下に太罫が入る", async () => {
+    const only = { sheets: false, overview: true, exchange: false, aides: false, classDaily: false, classOverview: true };
+    const buf = await buildWeekXlsx(input(), only);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const ws = wb.getWorksheet("クラス×曜日 一覧");
+    expect(ws).toBeDefined();
+    let headerRow: ExcelJS.Row | undefined;
+    ws!.eachRow((row) => {
+      if (row.getCell(1).value === "時限") headerRow = row;
+    });
+    expect(headerRow).toBeDefined();
+    // 見出し下は太罫
+    expect(headerRow!.getCell(2).border.bottom?.style).toBe("medium");
+    // 火曜開始列（3列目）の左罫は太罫（1クラス構成でも曜日境目は区切る）
+    expect(headerRow!.getCell(3).border.left?.style).toBe("medium");
+    // 外枠：先頭列の左・最終列の右
+    expect(headerRow!.getCell(1).border.left?.style).toBe("medium");
+    const lastCol = headerRow!.cellCount;
+    expect(headerRow!.getCell(lastCol).border.right?.style).toBe("medium");
   });
 });
 

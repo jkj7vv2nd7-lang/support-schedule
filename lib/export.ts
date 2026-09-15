@@ -190,13 +190,15 @@ function classDaySheet(input: WeekExportInput, classId: string): { title: string
 }
 
 // クラス×曜日 一覧（A4横1枚向け）: 本体は lib/schedule の classOverviewTable（印刷と共用）
-function classOverviewGrid(input: WeekExportInput): { header: string[]; rows: string[][]; dayStarts: number[] } {
+function classOverviewGrid(input: WeekExportInput): { header: string[]; rows: string[][]; dayStarts: number[]; dayEnds: number[] } {
   const t = classOverviewTable(input);
   const dayStarts: number[] = [];
+  const dayEnds: number[] = [];
   t.columns.forEach((col, i) => {
     if (i > 0 && col.day !== t.columns[i - 1].day) dayStarts.push(i + 1); // +1 は先頭「時限」列ぶん
+    if (i === t.columns.length - 1 || t.columns[i + 1].day !== col.day) dayEnds.push(i + 1);
   });
-  return { header: t.header, rows: t.rows, dayStarts };
+  return { header: t.header, rows: t.rows, dayStarts, dayEnds };
 }
 
 // 曜日×児童 行列で曜日が切り替わる本文行番号（0始まり）を返す
@@ -208,48 +210,72 @@ function dayGroupSeps(rows: string[][]): number[] {
   return seps;
 }
 
+// 曜日グループの最終行番号（囲みの下辺用）
+function dayGroupEnds(rows: string[][]): number[] {
+  const ends: number[] = [];
+  rows.forEach((r, i) => {
+    if (i === rows.length - 1 || rows[i + 1][0] !== r[0]) ends.push(i);
+  });
+  return ends;
+}
+
 /* ============================== Excel ============================== */
 
-const THIN_BORDER: Partial<ExcelJS.Borders> = {
-  top: { style: "thin", color: { argb: "FFBBBBBB" } },
-  left: { style: "thin", color: { argb: "FFBBBBBB" } },
-  bottom: { style: "thin", color: { argb: "FFBBBBBB" } },
-  right: { style: "thin", color: { argb: "FFBBBBBB" } },
-};
+const THIN_SIDE: ExcelJS.Border = { style: "thin", color: { argb: "FFBBBBBB" } };
+const MEDIUM_SIDE: ExcelJS.Border = { style: "medium", color: { argb: "FF666666" } };
 
-const MEDIUM_BORDER: Partial<ExcelJS.Borders> = {
-  top: { style: "medium", color: { argb: "FF666666" } },
-  left: { style: "medium", color: { argb: "FF666666" } },
-  bottom: { style: "medium", color: { argb: "FF666666" } },
-  right: { style: "medium", color: { argb: "FF666666" } },
+// 表の区切り強調: colSeps=左罫を太くする列番号(0始まり)、colSepsR=右罫を太くする列番号、
+// rowSeps=上罫を太くする本文行番号(0始まり)、rowSepsB=下罫を太くする本文行番号、
+// boxCols=データ列すべてを左右で囲む、boxRows=本文行すべてを上下で囲む、outer=外枠を太くする
+export type TableSepOpts = {
+  colSeps?: number[];
+  colSepsR?: number[];
+  rowSeps?: number[];
+  rowSepsB?: number[];
+  boxCols?: boolean;
+  boxRows?: boolean;
+  strongHeader?: boolean;
+  outer?: boolean;
 };
-
-// 表の区切り強調: colSeps=左罫を太くする列番号(0始まり)、rowSeps=上罫を太くする本文行番号(0始まり)
-export type TableSepOpts = { colSeps?: number[]; rowSeps?: number[]; strongHeader?: boolean };
 
 export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
   const putTable = (ws: ExcelJS.Worksheet, header: string[], rows: string[][], opts?: TableSepOpts) => {
+    const colCount = header.length;
+    const outer = opts?.outer !== false;
     const strongHeader = opts?.strongHeader !== false;
-    const borderFor = (col: number, rowTop: boolean): Partial<ExcelJS.Borders> =>
-      rowTop || (opts?.colSeps ?? []).includes(col) ? MEDIUM_BORDER : THIN_BORDER;
+    const dataCols = Array.from({ length: Math.max(colCount - 1, 0) }, (_, i) => i + 1);
+    const leftSet = new Set([...(opts?.colSeps ?? []), ...(opts?.boxCols ? dataCols : [])]);
+    const rightSet = new Set([...(opts?.colSepsR ?? []), ...(opts?.boxCols ? dataCols : [])]);
+    const boxRowIdx = opts?.boxRows ? rows.map((_, i) => i) : [];
+    const topSet = new Set([...(opts?.rowSeps ?? []), ...boxRowIdx]);
+    const bottomSet = new Set([...(opts?.rowSepsB ?? []), ...boxRowIdx]);
+    const sides = (top: boolean, left: boolean, bottom: boolean, right: boolean): Partial<ExcelJS.Borders> => ({
+      top: top ? MEDIUM_SIDE : THIN_SIDE,
+      left: left ? MEDIUM_SIDE : THIN_SIDE,
+      bottom: bottom ? MEDIUM_SIDE : THIN_SIDE,
+      right: right ? MEDIUM_SIDE : THIN_SIDE,
+    });
     const h = ws.addRow(header);
     h.font = { bold: true };
     h.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDBEAFE" } };
     h.eachCell((cell, colNumber) => {
-      const col = colNumber - 1;
-      cell.border = (opts?.colSeps ?? []).includes(col)
-        ? { ...MEDIUM_BORDER, bottom: strongHeader ? MEDIUM_BORDER.bottom : THIN_BORDER.bottom }
-        : { ...THIN_BORDER, bottom: strongHeader ? MEDIUM_BORDER.bottom : THIN_BORDER.bottom };
+      const c = colNumber - 1;
+      cell.border = sides(outer, (outer && c === 0) || leftSet.has(c), strongHeader, (outer && c === colCount - 1) || rightSet.has(c));
       cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     });
     rows.forEach((r, ri) => {
       const row = ws.addRow(r);
       row.alignment = { vertical: "top", wrapText: true };
-      const topSep = (opts?.rowSeps ?? []).includes(ri);
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        cell.border = borderFor(colNumber - 1, topSep);
+        const c = colNumber - 1;
+        cell.border = sides(
+          topSet.has(ri),
+          (outer && c === 0) || leftSet.has(c),
+          bottomSet.has(ri) || (outer && ri === rows.length - 1),
+          (outer && c === colCount - 1) || rightSet.has(c),
+        );
         if (ri % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F6FB" } };
       });
     });
@@ -268,7 +294,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       if (!sheet) continue;
       ws1.addRow([]);
       ws1.addRow([sheet.title]).font = { bold: true, size: 12 };
-      putTable(ws1, sheet.header, sheet.rows);
+      putTable(ws1, sheet.header, sheet.rows, { boxRows: true });
       if (sheet.notes) ws1.addRow([`〔配慮メモ〕${sheet.notes}`]);
     }
   }
@@ -278,7 +304,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     ws2.pageSetup = pageSetup;
     ws2.addRow([title]).font = { bold: true, size: 13 };
     const ov = overviewRows(input);
-    putTable(ws2, ov.header, ov.rows, { rowSeps: dayGroupSeps(ov.rows) });
+    putTable(ws2, ov.header, ov.rows, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows) });
   }
   if (layouts.exchange) {
     const ws3 = wb.addWorksheet("交流クラス別", { views: [{ showGridLines: false }] });
@@ -299,7 +325,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       if (!sheet) continue;
       ws4.addRow([]);
       ws4.addRow([sheet.title]).font = { bold: true, size: 12 };
-      putTable(ws4, sheet.header, sheet.rows);
+      putTable(ws4, sheet.header, sheet.rows, { boxRows: true });
     }
   }
   if (layouts.classDaily) {
@@ -311,7 +337,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       if (!sheet) continue;
       ws5.addRow([]);
       ws5.addRow([sheet.title]).font = { bold: true, size: 12 };
-      putTable(ws5, sheet.header, sheet.rows);
+      putTable(ws5, sheet.header, sheet.rows, { boxCols: true });
     }
   }
   if (layouts.classOverview) {
@@ -320,7 +346,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     ws6.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { top: 0.3, bottom: 0.3, left: 0.25, right: 0.25, header: 0.15, footer: 0.15 } };
     ws6.addRow([title]).font = { bold: true, size: 13 };
     const grid = classOverviewGrid(input);
-    putTable(ws6, grid.header, grid.rows, { colSeps: grid.dayStarts });
+    putTable(ws6, grid.header, grid.rows, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds });
   }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
@@ -347,15 +373,25 @@ function docxColumnWidths(colCount: number): number[] {
 function docxTable(header: string[], rows: string[][], fontSize = 18, opts?: TableSepOpts) {
   const colCount = Math.max(header.length, 1, ...rows.map((r) => r.length));
   const widths = docxColumnWidths(colCount);
+  const outer = opts?.outer !== false;
   const strongHeader = opts?.strongHeader !== false;
-  const cell = (text: string, isHeader: boolean, w: number, zebra: boolean, topSep: boolean) => {
-    const thickLeft = (opts?.colSeps ?? []).includes(w);
-    const top = topSep ? CELL_BORDER_STRONG : CELL_BORDER;
-    const left = thickLeft ? CELL_BORDER_STRONG : CELL_BORDER;
-    const bottom = isHeader && strongHeader ? CELL_BORDER_STRONG : CELL_BORDER;
+  const dataCols = Array.from({ length: Math.max(colCount - 1, 0) }, (_, i) => i + 1);
+  const leftSet = new Set([...(opts?.colSeps ?? []), ...(opts?.boxCols ? dataCols : [])]);
+  const rightSet = new Set([...(opts?.colSepsR ?? []), ...(opts?.boxCols ? dataCols : [])]);
+  const boxRowIdx = opts?.boxRows ? rows.map((_, i) => i) : [];
+  const topSet = new Set([...(opts?.rowSeps ?? []), ...boxRowIdx]);
+  const bottomSet = new Set([...(opts?.rowSepsB ?? []), ...boxRowIdx]);
+  const cell = (text: string, isHeader: boolean, w: number, zebra: boolean, ri: number) => {
+    const top = (isHeader ? outer : topSet.has(ri)) ? CELL_BORDER_STRONG : CELL_BORDER;
+    const left = ((outer && w === 0) || leftSet.has(w)) ? CELL_BORDER_STRONG : CELL_BORDER;
+    const bottom =
+      (isHeader && strongHeader) || (!isHeader && (bottomSet.has(ri) || (outer && ri === rows.length - 1)))
+        ? CELL_BORDER_STRONG
+        : CELL_BORDER;
+    const right = ((outer && w === colCount - 1) || rightSet.has(w)) ? CELL_BORDER_STRONG : CELL_BORDER;
     return new TableCell({
       width: { size: widths[w] ?? Math.floor(100 / colCount), type: WidthType.PERCENTAGE },
-      borders: { top, bottom, left, right: CELL_BORDER },
+      borders: { top, bottom, left, right },
       margins: CELL_MARGIN,
       verticalAlign: VerticalAlign.CENTER,
       shading: isHeader ? { type: "clear", fill: "DBEAFE", color: "auto" } : zebra ? { type: "clear", fill: ZEBRA_FILL, color: "auto" } : undefined,
@@ -373,8 +409,8 @@ function docxTable(header: string[], rows: string[][], fontSize = 18, opts?: Tab
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
-      ...(header.length > 0 ? [new TableRow({ children: header.map((h, i) => cell(h, true, i, false, false)), tableHeader: true, cantSplit: true })] : []),
-      ...rows.map((r, ri) => new TableRow({ children: r.map((t, i) => cell(t, false, i, ri % 2 === 1, (opts?.rowSeps ?? []).includes(ri))), cantSplit: true })),
+      ...(header.length > 0 ? [new TableRow({ children: header.map((h, i) => cell(h, true, i, false, -1)), tableHeader: true, cantSplit: true })] : []),
+      ...rows.map((r, ri) => new TableRow({ children: r.map((t, i) => cell(t, false, i, ri % 2 === 1, ri)), cantSplit: true })),
     ],
   });
 }
@@ -400,7 +436,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       needBreak();
       children.push(
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-        docxTable(sheet.header, sheet.rows),
+        docxTable(sheet.header, sheet.rows, 18, { boxRows: true }),
       );
       if (sheet.notes) {
         children.push(
@@ -418,7 +454,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       new Paragraph({ children: [new TextRun({ text: "全体一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
     );
     const ov = overviewRows(input);
-    children.push(docxTable(ov.header, ov.rows, 18, { rowSeps: dayGroupSeps(ov.rows) }));
+    children.push(docxTable(ov.header, ov.rows, 18, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows) }));
   }
   if (layouts.exchange) {
     needBreak();
@@ -439,7 +475,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       needBreak();
       children.push(
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-        docxTable(sheet.header, sheet.rows),
+        docxTable(sheet.header, sheet.rows, 18, { boxRows: true }),
       );
     }
   }
@@ -450,7 +486,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       needBreak();
       children.push(
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-        docxTable(sheet.header, sheet.rows),
+        docxTable(sheet.header, sheet.rows, 18, { boxCols: true }),
       );
     }
   }
@@ -460,7 +496,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     children.push(
       new Paragraph({ children: [new TextRun({ text: "クラス×曜日 一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
       // 列数が多くなりやすい表なので、1ページに収まりやすいよう小さめのフォントで組む（用紙サイズによっては複数ページに分かれる場合があります）
-      docxTable(grid.header, grid.rows, 13, { colSeps: grid.dayStarts }),
+      docxTable(grid.header, grid.rows, 13, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds }),
     );
   }
   const doc = new Document({
@@ -558,6 +594,13 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][], opts?: TableSep
     c.doc.lineWidth(2).strokeColor("#555555").moveTo(x1, y1).lineTo(x2, y2).stroke();
     c.doc.restore();
   };
+  const outer = opts?.outer !== false;
+  const dataCols = Array.from({ length: Math.max(colCount - 1, 0) }, (_, i) => i + 1);
+  const leftSet = new Set([...(opts?.colSeps ?? []), ...(opts?.boxCols ? dataCols : [])]);
+  const rightSet = new Set([...(opts?.colSepsR ?? []), ...(opts?.boxCols ? dataCols : [])]);
+  const boxRowIdx = opts?.boxRows ? rows.map((_, i) => i) : [];
+  const topSet = new Set([...(opts?.rowSeps ?? []), ...boxRowIdx]);
+  const bottomSet = new Set([...(opts?.rowSepsB ?? []), ...boxRowIdx]);
   const pad = 4;
   const fontSize = 8;
   const lineH = 11.5;
@@ -589,8 +632,10 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][], opts?: TableSep
     });
     return max;
   };
-  const drawRow = (cells: string[], isHeader: boolean, sy: number, zebra: boolean, topSep: boolean) => {
+  const drawRow = (cells: string[], isHeader: boolean, sy: number, zebra: boolean, bodyIndex: number) => {
     const h = rowH(cells);
+    const topSep = !isHeader && topSet.has(bodyIndex);
+    const botSep = !isHeader && (bottomSet.has(bodyIndex) || (outer && bodyIndex === rows.length - 1));
     let x = c.left;
     c.doc.fontSize(fontSize);
     cells.forEach((txt, i) => {
@@ -610,11 +655,18 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][], opts?: TableSep
       x += w;
     });
     // 区切り強調（行単位で描くので改ページをまたいでも崩れない）
-    for (const ci of opts?.colSeps ?? []) {
-      if (ci > 0 && ci < colCount) sepLine(colX(ci), sy, colX(ci), sy + h);
+    const vSeps = new Set<number>();
+    for (const ci of leftSet) if (ci > 0 && ci < colCount) vSeps.add(ci);
+    for (const ci of rightSet) if (ci >= 0 && ci < colCount - 1) vSeps.add(ci + 1);
+    if (outer) {
+      vSeps.add(0);
+      vSeps.add(colCount);
     }
+    for (const ci of vSeps) sepLine(colX(ci), sy, colX(ci), sy + h);
     if (topSep) sepLine(c.left, sy, c.left + c.usable, sy);
+    if (botSep) sepLine(c.left, sy + h, c.left + c.usable, sy + h);
     if (isHeader && strongHeader) sepLine(c.left, sy + h, c.left + c.usable, sy + h);
+    if (isHeader && outer) sepLine(c.left, sy, c.left + c.usable, sy);
   };
   const draw = (cells: string[], isHeader: boolean, zebra: boolean, bodyIndex: number) => {
     const h = rowH(cells);
@@ -624,11 +676,11 @@ function pdfTable(c: PdfCtx, header: string[], rows: string[][], opts?: TableSep
       // 長い表の続きには表頭を繰り返す
       if (!isHeader && header.length > 0) {
         const hh = rowH(header);
-        drawRow(header, true, c.y, false, false);
+        drawRow(header, true, c.y, false, -1);
         c.y += hh;
       }
     }
-    drawRow(cells, isHeader, c.y, zebra, !isHeader && (opts?.rowSeps ?? []).includes(bodyIndex));
+    drawRow(cells, isHeader, c.y, zebra, bodyIndex);
     c.y += h;
   };
   if (header.length > 0) draw(header, true, false, -1);
@@ -647,6 +699,13 @@ function pdfSinglePageTable(c: PdfCtx, header: string[], rows: string[][], opts?
   const weights = columnWeights(colCount);
   const widths = weights.map((w) => c.usable * w);
   const strongHeader = opts?.strongHeader !== false;
+  const outer = opts?.outer !== false;
+  const dataCols = Array.from({ length: Math.max(colCount - 1, 0) }, (_, i) => i + 1);
+  const leftSet = new Set([...(opts?.colSeps ?? []), ...(opts?.boxCols ? dataCols : [])]);
+  const rightSet = new Set([...(opts?.colSepsR ?? []), ...(opts?.boxCols ? dataCols : [])]);
+  const boxRowIdx = opts?.boxRows ? rows.map((_, i) => i) : [];
+  const topSet = new Set([...(opts?.rowSeps ?? []), ...boxRowIdx]);
+  const bottomSet = new Set([...(opts?.rowSepsB ?? []), ...boxRowIdx]);
   const maxHeight = 595.28 - c.top - 36; // 用紙下端の余白ぶんを差し引いた1ページの使用可能高さ
   const pad = 3;
 
@@ -697,7 +756,9 @@ function pdfSinglePageTable(c: PdfCtx, header: string[], rows: string[][], opts?
   }
   c.doc.fontSize(chosenSize);
 
-  const drawRow = (cells: string[], isHeader: boolean, sy: number, h: number, zebra: boolean, topSep: boolean) => {
+  const drawRow = (cells: string[], isHeader: boolean, sy: number, h: number, zebra: boolean, bodyIndex: number) => {
+    const topSep = !isHeader && topSet.has(bodyIndex);
+    const botSep = !isHeader && (bottomSet.has(bodyIndex) || (outer && bodyIndex === rows.length - 1));
     let x = c.left;
     cells.forEach((txt, i) => {
       const w = widths[i] ?? c.usable / colCount;
@@ -722,23 +783,36 @@ function pdfSinglePageTable(c: PdfCtx, header: string[], rows: string[][], opts?
       c.doc.restore();
     };
     let vx = c.left;
+    const vSeps = new Set<number>();
     for (let i = 0; i < colCount; i++) {
-      if ((opts?.colSeps ?? []).includes(i) && i > 0) sepLine(vx, sy, vx, sy + h);
+      if (leftSet.has(i) && i > 0) vSeps.add(i);
+      if (rightSet.has(i) && i < colCount - 1) vSeps.add(i + 1);
+      vx += widths[i] ?? c.usable / colCount;
+    }
+    if (outer) {
+      vSeps.add(0);
+      vSeps.add(colCount);
+    }
+    vx = c.left;
+    for (let i = 0; i <= colCount; i++) {
+      if (vSeps.has(i)) sepLine(vx, sy, vx, sy + h);
       vx += widths[i] ?? c.usable / colCount;
     }
     if (topSep) sepLine(c.left, sy, c.left + c.usable, sy);
+    if (botSep) sepLine(c.left, sy + h, c.left + c.usable, sy + h);
     if (isHeader && strongHeader) sepLine(c.left, sy + h, c.left + c.usable, sy + h);
+    if (isHeader && outer) sepLine(c.left, sy, c.left + c.usable, sy);
   };
 
   if (header.length > 0) {
-    drawRow(header, true, c.y, chosen.headerH, false, false);
+    drawRow(header, true, c.y, chosen.headerH, false, -1);
     c.y += chosen.headerH;
   }
   rows.forEach((r, ri) => {
     const padded = [...r];
     while (padded.length < colCount) padded.push("");
     const h = chosen.rowH(padded);
-    drawRow(padded, false, c.y, h, ri % 2 === 1, (opts?.rowSeps ?? []).includes(ri));
+    drawRow(padded, false, c.y, h, ri % 2 === 1, ri);
     c.y += h;
   });
   c.y += 8;
@@ -759,7 +833,7 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
       if (!sheet) continue;
       needBreak();
       pdfText(c, sheet.title, 11, 2);
-      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { boxRows: true });
       if (sheet.notes) pdfText(c, `〔配慮メモ〕${sheet.notes}`, 9, 3);
     }
   }
@@ -767,7 +841,7 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
     needBreak();
     pdfText(c, "全体一覧", 11, 2);
     const ov = overviewRows(input);
-    pdfTable(c, ov.header, ov.rows, { rowSeps: dayGroupSeps(ov.rows) });
+    pdfTable(c, ov.header, ov.rows, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows) });
   }
   if (layouts.exchange) {
     needBreak();
@@ -783,7 +857,7 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
       if (!sheet) continue;
       needBreak();
       pdfText(c, sheet.title, 11, 2);
-      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { boxRows: true });
     }
   }
   if (layouts.classDaily) {
@@ -792,14 +866,14 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
       if (!sheet) continue;
       needBreak();
       pdfText(c, sheet.title, 11, 2);
-      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))));
+      pdfTable(c, sheet.header, sheet.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { boxCols: true });
     }
   }
   if (layouts.classOverview) {
     needBreak();
     pdfText(c, "クラス×曜日 一覧", 11, 2);
     const grid = classOverviewGrid(input);
-    pdfSinglePageTable(c, grid.header, grid.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { colSeps: grid.dayStarts });
+    pdfSinglePageTable(c, grid.header, grid.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { colSeps: grid.dayStarts, colSepsR: grid.dayEnds });
   }
   return collectPdf(c.doc);
 }
