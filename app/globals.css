@@ -27,6 +27,8 @@ body {
 
 @media print {
   .no-print { display: none !important; }
+  /* ダークモードでも紙は白・文字は黒で出す */
+  body { background: #ffffff !important; color: #111111 !important; }
   section { box-shadow: none !important; border: none !important; }
   table { break-inside: avoid; }
   tr, th, td { break-inside: avoid; page-break-inside: avoid; }

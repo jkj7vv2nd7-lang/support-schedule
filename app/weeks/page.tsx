@@ -37,6 +37,7 @@ export default function WeeksPage() {
   const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   const [notice, setNotice] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (!notice) return;
@@ -271,6 +272,9 @@ export default function WeeksPage() {
                   </Btn>
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!printLayoutsOn} onClick={() => window.print()}>
                     印刷する
+                  </Btn>
+                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!printLayoutsOn} onClick={() => setShowPreview((v) => !v)}>
+                    {showPreview ? "プレビューを閉じる" : "印刷プレビュー"}
                   </Btn>
                   <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
                 </div>
@@ -513,6 +517,12 @@ export default function WeeksPage() {
             ) : null}
 
             {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} /> : null}
+            {isOpen && open && showPreview ? (
+              <div className="no-print mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-4">
+                <p className="mb-2 text-xs font-bold text-zinc-500">印刷プレビュー（実際の印刷では白黒・A4横になります）</p>
+                <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} preview />
+              </div>
+            ) : null}
           </Card>
         );
       })}
@@ -528,17 +538,19 @@ function WeekPrint({
   aides,
   classes,
   layouts,
+  preview = false,
 }: {
   weeks: WeekPlan[];
   students: Student[];
   aides: Aide[];
   classes: ExchangeClass[];
   layouts: PrintLayouts;
+  preview?: boolean;
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
   const laterAfterSheets = (hasMoreSheets: boolean) => hasMoreSheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily;
   return (
-    <div className="hidden print:block">
+    <div className={preview ? "block" : "hidden print:block"}>
       {weeks.map((w) => {
         const sheetStudents = students.filter((s) => w.cells[s.id]);
         const overview = layouts.classOverview ? classOverviewTable({ week: w, students, aides, classes }) : null;
