@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRoster, autoAssignAides, buildWeekCells, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
+import { applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
 import { exportBackup, importBackup } from "@/lib/storage";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
@@ -132,22 +132,22 @@ describe("detach", () => {
   });
 });
 
-describe("classOverviewTable", () => {
-  function week(): WeekPlan {
-    const cells = buildWeekCells([student()], [cls()]);
-    cells.s1[slotKey(0, 1)].teacher = "田中";
-    return {
-      id: "w1",
-      weekStart: "2026-09-14",
-      cells,
-      dayNotes: ["", "運動会予行", "", "", ""],
-      createdAt: 1,
-      updatedAt: 1,
-    };
-  }
+function overviewWeek(): WeekPlan {
+  const cells = buildWeekCells([student()], [cls()]);
+  cells.s1[slotKey(0, 1)].teacher = "田中";
+  return {
+    id: "w1",
+    weekStart: "2026-09-14",
+    cells,
+    dayNotes: ["", "運動会予行", "", "", ""],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
 
+describe("classOverviewTable", () => {
   it("参考様式の行構成（日・曜日・予定・時限）になる", () => {
-    const t = classOverviewTable({ week: week(), students: [student()], aides: [], classes: [{ ...cls(), morning: ["朝清掃", "", "", "", ""], notice: "水曜は掃除なし", dismissal: ["14:20", "", "", "", ""] }] });
+    const t = classOverviewTable({ week: overviewWeek(), students: [student()], aides: [], classes: [{ ...cls(), morning: ["朝清掃", "", "", "", ""], notice: "水曜は掃除なし", dismissal: ["14:20", "", "", "", ""] }] });
     expect(t.header[0]).toBe("時限");
     expect(t.header[1]).toContain("3年2組");
     const firsts = t.rows.map((r) => r[0]);
@@ -163,7 +163,7 @@ describe("classOverviewTable", () => {
   });
 
   it("空行（予定・朝活動など）は出さない", () => {
-    const w = week();
+    const w = overviewWeek();
     w.dayNotes = undefined;
     const t = classOverviewTable({ week: w, students: [student()], aides: [], classes: [cls()] });
     const firsts = t.rows.map((r) => r[0]);
@@ -172,7 +172,7 @@ describe("classOverviewTable", () => {
 
   it("交流のないクラスは列に出さない", () => {
     const other: ExchangeClass = { id: "c2", name: "4年1組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 };
-    const t = classOverviewTable({ week: week(), students: [student()], aides: [], classes: [cls(), other] });
+    const t = classOverviewTable({ week: overviewWeek(), students: [student()], aides: [], classes: [cls(), other] });
     expect(t.columns).toHaveLength(5);
     expect(t.header).toHaveLength(6);
   });
@@ -180,13 +180,32 @@ describe("classOverviewTable", () => {
   it("曜日ブロックの列位置が分かる", () => {
     const c2: ExchangeClass = { id: "c2", name: "4年1組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 };
     const s2: Student = { id: "s2", name: "佐藤", exchangeClassId: "c2", exchangeSlots: [] };
-    const t = classOverviewTable({ week: week(), students: [student(), s2], aides: [], classes: [cls(), c2] });
+    const t = classOverviewTable({ week: overviewWeek(), students: [student(), s2], aides: [], classes: [cls(), c2] });
     // 2クラス×5曜日=10列。曜日ごとに開始列と終了列が分かる
     expect(t.columns).toHaveLength(10);
     const starts = t.columns.map((c, i) => (i > 0 && c.day !== t.columns[i - 1].day ? i + 1 : -1)).filter((i) => i > 0);
     const ends = t.columns.map((c, i) => (i === t.columns.length - 1 || t.columns[i + 1].day !== c.day ? i + 1 : -1)).filter((i) => i > 0);
     expect(starts).toEqual([3, 5, 7, 9]);
     expect(ends).toEqual([2, 4, 6, 8, 10]);
+  });
+});
+
+describe("classDayTable", () => {
+  it("クラス表の構成と担当・空行省略・該当なしnull", () => {
+    const w = overviewWeek();
+    const t = classDayTable({ week: w, students: [student()], aides: [], classes: [{ ...cls(), notice: "連絡あり" }] }, "c1");
+    expect(t).not.toBeNull();
+    expect(t!.title).toContain("3年2組");
+    expect(t!.header).toHaveLength(6);
+    expect(t!.header[1]).toContain("月");
+    const firsts = t!.rows.map((r) => r[0]);
+    expect(firsts).toEqual(["予定", "1", "2", "3", "4", "5", "6", "連絡等"]);
+    expect(t!.rows[1][1]).toContain("国語");
+    expect(t!.rows[1][1]).toContain("田中");
+    expect(classDayTable({ week: w, students: [student()], aides: [], classes: [cls()] }, "c1")!.rows.map((r) => r[0])).toEqual(["予定", "1", "2", "3", "4", "5", "6"]);
+    expect(classDayTable({ week: w, students: [], aides: [], classes: [cls()] }, "c1")).toBeNull();
+    expect(classDayTable({ week: w, students: [student()], aides: [], classes: [] }, "c1")).toBeNull();
+    expect(classDayTable({ week: w, students: [student()], aides: [], classes: [cls()] }, "cx")).toBeNull();
   });
 });
 

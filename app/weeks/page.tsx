@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classOverviewTable, daySections, formatWeek, mondayOf } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, daySections, formatWeek, mondayOf, sortClasses } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -35,8 +35,7 @@ export default function WeeksPage() {
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
   const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false });
   const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
-  // 「クラス別(日ごと)」はPDF/Excel/Wordのみ対応（ブラウザ印刷ビューは未対応）なので、印刷ボタンの活性判定には含めない
-  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classOverview;
+  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -291,9 +290,6 @@ export default function WeeksPage() {
                     </label>
                   ))}
                 </div>
-                {layouts.classDaily ? (
-                  <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
-                ) : null}
                 {layouts.classOverview ? (
                   <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」は児童名なしでA4横1枚に収まります（印刷ボタン・PDF対応。参考様式の主表と同じ構成です）</p>
                 ) : null}
@@ -757,6 +753,39 @@ function WeekPrint({
                                 </td>
                               );
                             })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })
+            : null}
+          {layouts.classDaily
+            ? sortClasses(classes).map((c) => {
+                const sheet = classDayTable({ week: w, students, aides, classes }, c.id);
+                if (!sheet) return null;
+                return (
+                  <div key={c.id}>
+                    <h3 className="mt-6 text-sm font-bold">{sheet.title}</h3>
+                    <table className="print-grid mt-1 w-full border-collapse text-xs">
+                      <thead>
+                        <tr>
+                          {sheet.header.map((h, hi) => (
+                            <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : "border px-1 py-1 sep-day sep-day-r"}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sheet.rows.map((row, ri) => (
+                          <tr key={ri}>
+                            {row.map((cell, cci) => (
+                              <td key={cci} className={cci === 0 ? "border px-1 py-1 text-center font-bold" : "border px-1 py-1 align-top sep-day sep-day-r"}>
+                                {cell.split("\n").map((line, li) => (
+                                  <span key={li} className="block">{line || " "}</span>
+                                ))}
+                              </td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>

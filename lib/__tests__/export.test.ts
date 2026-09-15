@@ -104,7 +104,7 @@ describe("week export", () => {
     const only = { sheets: false, overview: true, exchange: false, aides: false, classDaily: false, classOverview: true };
     const buf = await buildWeekXlsx(input(), only);
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    await (wb.xlsx.load as unknown as (data: Uint8Array) => Promise<ExcelJS.Workbook>)(buf);
     const ws = wb.getWorksheet("クラス×曜日 一覧");
     expect(ws).toBeDefined();
     let headerRow: ExcelJS.Row | undefined;

@@ -240,6 +240,55 @@ export function classOverviewTable(input: WeekDayInput): OverviewTable {
   return { columns, header, rows };
 }
 
+// クラス別（日ごと）: 参考様式のクラス表と同じ構成。列=曜日、行=予定/朝活動/時限/連絡等/下校時刻
+export type ClassDayTable = { title: string; header: string[]; rows: string[][] };
+
+export function classDayTable(input: WeekDayInput, classId: string): ClassDayTable | null {
+  const cls = input.classes.find((c) => c.id === classId);
+  if (!cls) return null;
+  const attendees = input.students.filter((s) => s.exchangeClassId === classId);
+  if (attendees.length === 0) return null;
+  const title = `${cls.name}　${attendees.map((s) => s.name).join("・")}`;
+  const header = ["", ...DAYS.map((d, day) => `${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`)];
+  const rows: string[][] = [];
+  const hasAny = (values: (string | undefined)[]) => values.some((v) => (v ?? "").trim().length > 0);
+
+  const dayNotes = DAYS.map((_, day) => input.week.dayNotes?.[day] ?? "");
+  if (hasAny(dayNotes)) rows.push(["予定", ...dayNotes]);
+
+  const morning = DAYS.map((_, day) => cls.morning?.[day] ?? "");
+  if (hasAny(morning)) rows.push(["朝活動", ...morning]);
+
+  for (const p of PERIODS) {
+    rows.push([
+      `${p}`,
+      ...DAYS.map((_, day) => {
+        const slot = cls.timetable[day]?.[p - 1];
+        const lines: string[] = [];
+        if (slot?.subject) lines.push(slot.subject);
+        if (slot?.content) lines.push(slot.content);
+        const staffSet = new Set<string>();
+        for (const s of attendees) {
+          const c = input.week.cells[s.id]?.[slotKey(day, p)];
+          if (!c || c.place !== "exchange") continue;
+          if ((c.classId ?? s.exchangeClassId) !== classId) continue;
+          const staff = [c.teacher ?? "", aideName(input.aides, c.aideId ?? null)].filter(Boolean).join("・");
+          if (staff) staffSet.add(staff);
+        }
+        if (staffSet.size > 0) lines.push(Array.from(staffSet).join("・"));
+        return lines.join("\n");
+      }),
+    ]);
+  }
+
+  if (cls.notice) rows.push(["連絡等", ...DAYS.map(() => cls.notice ?? "")]);
+
+  const dismissal = DAYS.map((_, day) => cls.dismissal?.[day] ?? "");
+  if (hasAny(dismissal)) rows.push(["下校時刻", ...dismissal]);
+
+  return { title, header, rows };
+}
+
 // 交流クラス別：曜日ごとのまとめ（1曜日＝1表：行=クラス＋支援学級、列=時限）
 export type DaySectionRow = { label: string; cells: string[] };
 export type DaySection = { day: number; weekday: string; date: string; rows: DaySectionRow[] };
