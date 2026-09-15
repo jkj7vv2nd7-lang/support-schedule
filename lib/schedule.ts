@@ -172,6 +172,17 @@ export function aideName(aides: Aide[], id: string | null): string {
   return aides.find((a) => a.id === id)?.name ?? "";
 }
 
+// 介助員の週間担当コマ数を数える（負荷の見える化用）
+export function countAideSlots(cells: Record<string, Record<string, CellPlan>>, aideId: string): number {
+  let n = 0;
+  for (const bySlot of Object.values(cells)) {
+    for (const cell of Object.values(bySlot)) {
+      if (cell.aideId === aideId) n += 1;
+    }
+  }
+  return n;
+}
+
 function absentDaysOf(week: WeekPlan, sid: string): number[] {
   const days = week.absent?.[sid];
   return Array.isArray(days) ? days.filter((d): d is number => typeof d === "number") : [];

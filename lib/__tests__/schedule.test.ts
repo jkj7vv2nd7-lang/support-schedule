@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf } from "@/lib/schedule";
 import { exportBackup, importBackup, validateDismissal } from "@/lib/storage";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
@@ -255,5 +255,18 @@ describe("validateDismissal", () => {
     expect(errors).toHaveLength(3);
     expect(errors[0]).toContain("月曜");
     expect(validateDismissal(null)).toEqual([]);
+  });
+});
+
+describe("countAideSlots", () => {
+  it("介助員ごとの担当コマ数を数える", () => {
+    const cells = buildWeekCells([student()], [cls()]);
+    cells.s1[slotKey(0, 1)].aideId = "a1";
+    cells.s1[slotKey(0, 2)].aideId = "a1";
+    cells.s1[slotKey(1, 1)].aideId = "a2";
+    expect(countAideSlots(cells, "a1")).toBe(2);
+    expect(countAideSlots(cells, "a2")).toBe(1);
+    expect(countAideSlots(cells, "ax")).toBe(0);
+    expect(countAideSlots({}, "a1")).toBe(0);
   });
 });

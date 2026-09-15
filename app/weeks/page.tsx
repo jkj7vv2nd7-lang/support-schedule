@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, daySections, formatWeek, mondayOf, sortClasses } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, formatWeek, mondayOf, sortClasses } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -330,9 +330,13 @@ export default function WeeksPage() {
                   ) : null}
                   {aides.map((a) => {
                     const post = open.posts?.find((p) => p.aideId === a.id);
+                    const assigned = countAideSlots(open.cells, a.id);
                     return (
                       <div key={a.id} className="mt-2 border-t border-zinc-100 pt-2">
-                        <p className="text-xs font-bold">{a.name}</p>
+                        <p className="text-xs font-bold">
+                          {a.name}
+                          <span className="ml-2 font-normal text-zinc-500">今週{assigned}コマ</span>
+                        </p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-zinc-400">児童：</span>
                           {students.map((s) => (
