@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Btn, Card, Field, Notice, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, emptyTimetable, type ExchangeClass, type SlotContent } from "@/lib/types";
-import { K_CLASSES, K_STUDENTS, loadClasses, loadStudents, makeId, saveClasses, saveStudents } from "@/lib/storage";
+import { K_CLASSES, K_STUDENTS, loadClasses, loadStudents, makeId, saveClasses, saveStudents, validateDismissal } from "@/lib/storage";
 import { detachClassFromStudents } from "@/lib/schedule";
 import { refreshStored, useStored } from "@/lib/store";
 
@@ -102,6 +102,11 @@ export default function ClassesPage() {
     const now = Date.now();
     const morningClean = morning.map((m) => m.trim());
     const dismissalClean = dismissal.map((m) => m.trim());
+    const dismissalErrors = validateDismissal(dismissalClean);
+    if (dismissalErrors.length > 0) {
+      setError(dismissalErrors[0]);
+      return;
+    }
     const noticeClean = notice.trim() || undefined;
     if (editingId === "new") {
       persist([{ id: makeId(), name: name.trim(), grade: grade.trim(), timetable: table, morning: morningClean, dismissal: dismissalClean, notice: noticeClean, updatedAt: now }, ...items]);

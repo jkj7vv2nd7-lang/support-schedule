@@ -155,17 +155,19 @@ export default function PeoplePage() {
     }
     setError(null);
     const isDuplicate = students.some((x) => x.id !== editingStudent && x.name === trimmed);
+    // 交流先が未選択のコマ指定は無効になるため落とす
+    const slots = sClassId ? sSlots : [];
     if (editingStudent) {
       persistStudents(
         students.map((x) =>
           x.id === editingStudent
-            ? { ...x, name: trimmed, exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined }
+            ? { ...x, name: trimmed, exchangeClassId: sClassId || null, exchangeSlots: slots, notes: sNotes.trim() || undefined }
             : x,
         ),
       );
     } else {
       persistStudents([
-        { id: makeId(), name: trimmed, exchangeClassId: sClassId || null, exchangeSlots: sSlots, notes: sNotes.trim() || undefined },
+        { id: makeId(), name: trimmed, exchangeClassId: sClassId || null, exchangeSlots: slots, notes: sNotes.trim() || undefined },
         ...students,
       ]);
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf } from "@/lib/schedule";
-import { exportBackup, importBackup } from "@/lib/storage";
+import { exportBackup, importBackup, validateDismissal } from "@/lib/storage";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
 function cls(): ExchangeClass {
@@ -244,5 +244,16 @@ describe("backup", () => {
     const exported = exportBackup();
     expect(exported.app).toBe("support-schedule");
     expect(Array.isArray(exported.classes)).toBe(true);
+  });
+});
+
+describe("validateDismissal", () => {
+  it("空欄は可・時刻形式のみ許可", () => {
+    expect(validateDismissal([])).toEqual([]);
+    expect(validateDismissal(["14:20", "", "9:05", "", ""])).toEqual([]);
+    const errors = validateDismissal(["1420", "", "25:00", "", "14-20"]);
+    expect(errors).toHaveLength(3);
+    expect(errors[0]).toContain("月曜");
+    expect(validateDismissal(null)).toEqual([]);
   });
 });

@@ -103,6 +103,22 @@ export function isValidWeek(x: unknown): x is WeekPlan {
   return isStr(o.id) && o.id.length > 0 && isStr(o.weekStart) && !!o.cells && typeof o.cells === "object";
 }
 
+// 下校時刻の形式チェック。空欄は可、入力があれば HH:MM 形式のみ許可。エラーメッセージの配列を返す
+export function validateDismissal(values: unknown): string[] {
+  const days = ["月曜", "火曜", "水曜", "木曜", "金曜"];
+  const list = Array.isArray(values) ? values : [];
+  const errors: string[] = [];
+  list.slice(0, 5).forEach((v, i) => {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (!s) return;
+    const m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) {
+      errors.push(`${days[i] ?? `${i + 1}日目`}の下校時刻は「14:20」のような時刻で入力してください`);
+    }
+  });
+  return errors;
+}
+
 export const loadClasses = () => load(K_CLASSES, isValidClass).map(normalizeClass);
 export const loadStudents = () => load(K_STUDENTS, isValidStudent);
 export const loadAides = () => load(K_AIDES, isValidAide);
