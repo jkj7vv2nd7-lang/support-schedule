@@ -268,9 +268,7 @@ export default function PeoplePage() {
                   <Btn
                     variant="danger"
                     className="px-3 py-1.5 text-xs"
-                    onClick={() => {
-                      if (window.confirm(`${st.name}を削除しますか？`)) removeStudent(st);
-                    }}
+                    onClick={() => removeStudent(st)}
                   >
                     削除
                   </Btn>
@@ -318,9 +316,7 @@ export default function PeoplePage() {
                 <Btn
                   variant="danger"
                   className="px-3 py-1.5 text-xs"
-                  onClick={() => {
-                    if (window.confirm(`${a.name}を削除しますか？`)) removeAide(a);
-                  }}
+                  onClick={() => removeAide(a)}
                 >
                   削除
                 </Btn>

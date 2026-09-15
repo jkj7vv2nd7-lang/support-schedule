@@ -19,6 +19,20 @@ function stripFence(text: string): string {
   return text.replace(/```(?:json)?/gi, "").trim();
 }
 
+// モデルの応答からJSONを取り出す。余計な前置き・後書きが付いていても {…} の範囲を抜き出す
+export function extractTimetableJson(text: string): unknown {
+  const cleaned = stripFence(text);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // ignore and try brace extraction
+  }
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("no-json");
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
+
 function sanitize(raw: unknown) {
   const table = emptyTimetable();
   const list: unknown = (raw as { slots?: unknown } | null)?.slots ?? raw;
@@ -95,7 +109,7 @@ export async function POST(request: Request) {
       }
       res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-        { method: "POST", headers: { "content-type": "application/json" }, body },
+        { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(60000) },
       );
       if (res.ok) break;
       lastStatus = res.status;
@@ -120,7 +134,7 @@ export async function POST(request: Request) {
       .join("");
     let parsed: unknown = null;
     try {
-      parsed = JSON.parse(stripFence(text));
+      parsed = extractTimetableJson(text);
     } catch {
       return Response.json({ ok: false, error: "時間割の読み取り結果を解析できませんでした。写真を明るく・正面から撮り直してください" }, { status: 502 });
     }

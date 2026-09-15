@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { POST } from "@/app/api/export/route";
+import { extractTimetableJson } from "@/app/api/timetable/route";
 import { emptyTimetable } from "@/lib/types";
 
 function payload(layouts: unknown) {
@@ -42,5 +43,14 @@ describe("export route layouts", () => {
     const res = await post({ sheets: false, overview: false, exchange: false, aides: false, classDaily: false, classOverview: false });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error?: string }).error ?? "").toContain("1つ以上");
+  });
+});
+
+describe("timetable json", () => {
+  it("前置き・フェンス付きでも取り出せる", () => {
+    expect(extractTimetableJson('{"slots":[]}')).toEqual({ slots: [] });
+    expect(extractTimetableJson('```json\n{"slots":[{"day":0}]}\n```')).toEqual({ slots: [{ day: 0 }] });
+    expect(extractTimetableJson('読み取りました。{"slots":[]} 以上です')).toEqual({ slots: [] });
+    expect(() => extractTimetableJson("読み取れませんでした")).toThrow();
   });
 });
