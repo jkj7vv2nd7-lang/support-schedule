@@ -46,6 +46,7 @@ export function applyRoster(
   students: Student[],
   posts: WeekAidePost[] | undefined,
   absent?: Record<string, number[]>,
+  aides: Aide[] = [],
 ): Record<string, Record<string, CellPlan>> {
   const list = Array.isArray(posts) ? posts : [];
   const clean = list
@@ -69,6 +70,10 @@ export function applyRoster(
     }
   }
   const classOf = new Map(students.map((s) => [s.id, s.exchangeClassId]));
+  const off = new Set<string>();
+  for (const a of aides) {
+    for (const s of a.offSlots ?? []) off.add(`${a.id}@${slotKey(s.day, s.period)}`);
+  }
   const out: Record<string, Record<string, CellPlan>> = {};
   for (const [sid, bySlot] of Object.entries(cells)) {
     const offDays = Array.isArray(absent?.[sid]) ? (absent as Record<string, number[]>)[sid] : [];
@@ -81,6 +86,11 @@ export function applyRoster(
       const cid = cell.classId ?? classOf.get(sid) ?? null;
       // クラス指定は交流セルのみ。児童指定は全セル
       const aide = byStudent.get(sid) ?? (cell.place === "exchange" && cid ? byClass.get(cid) : undefined) ?? null;
+      // 勤務不可コマには入れない（後段の自動割付で別候補が付く）
+      if (aide && off.has(`${aide}@${key}`)) {
+        next[key] = cell;
+        continue;
+      }
       next[key] = aide ? { ...cell, aideId: aide } : cell;
     }
     out[sid] = next;

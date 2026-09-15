@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf } from "@/lib/schedule";
 import { exportBackup, importBackup } from "@/lib/storage";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
@@ -89,6 +89,30 @@ describe("applyRoster", () => {
     const cells = buildWeekCells([student()], [cls()]);
     const out = applyRoster(cells, [student()], [null, { aideId: 1 }, { aideId: "a1", studentIds: "x" }] as unknown as []);
     expect(out.s1[slotKey(0, 1)].aideId).toBeNull();
+  });
+
+  it("勤務不可コマには担当表でも入れない", () => {
+    const cells = buildWeekCells([student()], [cls()]);
+    const off = aide("a1", [{ day: 0, period: 1 }]);
+    const out = applyRoster(cells, [student()], [{ aideId: "a1", studentIds: ["s1"], classIds: [] }], undefined, [off]);
+    expect(out.s1[slotKey(0, 1)].aideId).toBeNull();
+    expect(out.s1[slotKey(0, 2)].aideId).toBe("a1");
+  });
+});
+
+describe("dates", () => {
+  it("mondayOfは週の月曜を返す", () => {
+    expect(mondayOf(new Date("2026-09-20T00:00:00"))).toBe("2026-09-14"); // 日曜
+    expect(mondayOf(new Date("2026-09-19T00:00:00"))).toBe("2026-09-14"); // 土曜
+    expect(mondayOf(new Date("2026-09-14T00:00:00"))).toBe("2026-09-14"); // 月曜
+    expect(mondayOf(new Date("2026-09-30T00:00:00"))).toBe("2026-09-28"); // 月またぎ
+    expect(mondayOf(new Date("2026-01-01T00:00:00"))).toBe("2025-12-29"); // 年またぎ
+  });
+
+  it("addDaysは月・年をまたげる", () => {
+    expect(addDays("2026-01-31", 1)).toBe("2026-02-01");
+    expect(addDays("2025-12-31", 1)).toBe("2026-01-01");
+    expect(addDays("2026-09-14", 4)).toBe("2026-09-18");
   });
 });
 

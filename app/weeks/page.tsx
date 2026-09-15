@@ -70,6 +70,12 @@ export default function WeeksPage() {
       setError("週（月曜）の日付が正しくありません");
       return;
     }
+    // 月曜以外が選ばれても月曜に丸める（表は月〜金固定のため）
+    const monday = mondayOf(new Date(`${newDate}T00:00:00`));
+    if (weeks.some((w) => w.weekStart === monday)) {
+      setError("同じ週の予定が既にあります。作り直す場合は先に削除してください");
+      return;
+    }
     const now = Date.now();
     let cells: WeekPlan["cells"];
     if (copyFrom) {
@@ -78,11 +84,12 @@ export default function WeeksPage() {
     } else {
       cells = buildWeekCells(students, classes);
     }
-    const week: WeekPlan = { id: makeId(), weekStart: newDate, cells, createdAt: now, updatedAt: now };
+    const week: WeekPlan = { id: makeId(), weekStart: monday, cells, createdAt: now, updatedAt: now };
     persist([week, ...weeks]);
     setOpenId(week.id);
     setActiveStudent(students[0]?.id ?? "");
     setSel(null);
+    if (monday !== newDate) setNotice(`${newDate}は月曜（${monday}）に丸めて作成しました`);
   }
 
   function updateCells(weekId: string, fn: (cells: WeekPlan["cells"]) => WeekPlan["cells"]) {
@@ -99,7 +106,7 @@ export default function WeeksPage() {
   }
 
   function runAutoAssign(week: WeekPlan) {
-    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts, week.absent), aides, week.absent));
+    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts, week.absent, aides), aides, week.absent));
     setNotice("介助員を自動割付しました");
   }
 
