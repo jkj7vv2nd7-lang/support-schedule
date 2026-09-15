@@ -268,6 +268,35 @@ export default function WeeksPage() {
                   </Btn>
                   <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
                 </div>
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
+                  <span className="text-xs font-bold text-zinc-600">出力する表（印刷・保存共通）：</span>
+                  {(
+                    [
+                      { key: "sheets", label: "児童別" },
+                      { key: "overview", label: "全体一覧" },
+                      { key: "exchange", label: "交流クラス別" },
+                      { key: "aides", label: "介助員別" },
+                      { key: "classDaily", label: "クラス別(日ごと)" },
+                      { key: "classOverview", label: "クラス×曜日 一覧(1枚)" },
+                    ] as const
+                  ).map((l) => (
+                    <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
+                      <input
+                        type="checkbox"
+                        checked={layouts[l.key]}
+                        onChange={() => toggleLayout(l.key)}
+                        className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
+                      />
+                      {l.label}
+                    </label>
+                  ))}
+                </div>
+                {layouts.classDaily ? (
+                  <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
+                ) : null}
+                {layouts.classOverview ? (
+                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」は児童名なしでA4横1枚に収まります（印刷ボタン・PDF対応。参考様式の主表と同じ構成です）</p>
+                ) : null}
                 <div className="rounded-xl border border-zinc-200 bg-white p-3">
                   <p className="text-sm font-bold">今週の予定（曜日別・任意）</p>
                   <p className="mt-0.5 text-xs text-zinc-400">学校行事など、その週だけのメモです（毎週入力し直します）。</p>
@@ -329,35 +358,6 @@ export default function WeeksPage() {
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-xs font-bold text-zinc-600">出力する表：</span>
-                  {(
-                    [
-                      { key: "sheets", label: "児童別" },
-                      { key: "overview", label: "全体一覧" },
-                      { key: "exchange", label: "交流クラス別" },
-                      { key: "aides", label: "介助員別" },
-                      { key: "classDaily", label: "クラス別(日ごと)" },
-                      { key: "classOverview", label: "クラス×曜日 一覧(1枚)" },
-                    ] as const
-                  ).map((l) => (
-                    <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
-                      <input
-                        type="checkbox"
-                        checked={layouts[l.key]}
-                        onChange={() => toggleLayout(l.key)}
-                        className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
-                      />
-                      {l.label}
-                    </label>
-                  ))}
-                </div>
-                {layouts.classDaily ? (
-                  <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
-                ) : null}
-                {layouts.classOverview ? (
-                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」は児童名なしでA4横1枚に収まります（印刷ボタン・PDF対応。参考様式の主表と同じ構成です）</p>
-                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
                     <button
@@ -547,11 +547,11 @@ function WeekPrint({
                   週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
                 </h2>
                 <h3 className="mt-2 text-sm font-bold">クラス×曜日 一覧</h3>
-                <table className="onepage-table mt-1 w-full border-collapse">
+                <table className="onepage-table print-grid mt-1 w-full border-collapse">
                   <thead>
                     <tr>
                       {overview.header.map((h, hi) => (
-                        <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : "border px-1 py-1"}>{h}</th>
+                        <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : `border px-1 py-1${hi > 1 && overview.columns[hi - 1].day !== overview.columns[hi - 2].day ? " sep-day" : ""}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -559,7 +559,7 @@ function WeekPrint({
                     {overview.rows.map((row, ri) => (
                       <tr key={ri}>
                         {row.map((cell, ci) => (
-                          <td key={ci} className={ci === 0 ? "border px-1 py-1 text-center font-bold" : "border px-1 py-1 align-top"}>
+                          <td key={ci} className={ci === 0 ? "border px-1 py-1 text-center font-bold" : `border px-1 py-1 align-top${ci > 1 && overview.columns[ci - 1].day !== overview.columns[ci - 2].day ? " sep-day" : ""}`}>
                             {cell.split("\n").map((line, li) => (
                               <span key={li} className="block">{line || " "}</span>
                             ))}
@@ -580,7 +580,7 @@ function WeekPrint({
                   </h2>
                 ) : null}
                 <h3 className="mt-4 text-sm font-bold">{s.name}</h3>
-                <table className="mt-1 w-full border-collapse text-xs">
+                <table className="print-grid mt-1 w-full border-collapse text-xs">
                   <thead>
                     <tr>
                       <th className="w-14 border px-1 py-1">曜日</th>
@@ -633,7 +633,7 @@ function WeekPrint({
           {layouts.overview ? (
             <div className={layouts.exchange ? "break-after-page" : undefined}>
             <h3 className="mt-6 text-sm font-bold">全体一覧（介助員）</h3>
-            <table className="mt-1 w-full border-collapse text-xs">
+            <table className="print-grid mt-1 w-full border-collapse text-xs">
               <thead>
                 <tr>
                   <th className="w-14 border px-1 py-1">曜日</th>
@@ -647,7 +647,7 @@ function WeekPrint({
                 {DAYS.flatMap((d, day) => {
                   const rows = students.filter((s) => w.cells[s.id]);
                   return rows.map((s, ri) => (
-                    <tr key={`${day}-${s.id}`}>
+                    <tr key={`${day}-${s.id}`} className={day > 0 && ri === 0 ? "sep-day" : undefined}>
                       {ri === 0 ? (
                         <td rowSpan={rows.length} className="border px-1 py-1 text-center font-bold">
                           {d}
@@ -685,7 +685,7 @@ function WeekPrint({
                 <div key={si} className={si < arr.length - 1 ? "break-after-page" : undefined}>
                   <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
                   <p className="mt-1 text-sm font-bold">{sec.weekday}（{sec.date}）</p>
-                  <table className="mt-1 w-full border-collapse text-xs">
+                  <table className="print-grid mt-1 w-full border-collapse text-xs">
                     <thead>
                       <tr>
                         {["クラス", ...PERIODS.map((p) => `${p}時限`)].map((h, hi) => (
@@ -717,7 +717,7 @@ function WeekPrint({
                 return (
                   <div key={a.id} className={moreAfter ? "break-after-page" : undefined}>
                     <h3 className="mt-6 text-sm font-bold">{a.name}（介助）</h3>
-                    <table className="mt-1 w-full border-collapse text-xs">
+                    <table className="print-grid mt-1 w-full border-collapse text-xs">
                       <thead>
                         <tr>
                           <th className="w-14 border px-1 py-1">曜日</th>
