@@ -27,10 +27,12 @@ body {
 
 @media print {
   .no-print { display: none !important; }
-  /* ダークモードでも紙は白・文字は黒で出す */
-  body { background: #ffffff !important; color: #111111 !important; }
+  /* ダークモードでも紙は白・文字は黒で出す。背景グラフィックOFFでも帯が消えないよう色調整はexact */
+  body { background: #ffffff !important; color: #111111 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   section { box-shadow: none !important; border: none !important; }
-  table { break-inside: avoid; }
+  /* 長い表は行単位で改ページし、表頭を各ページに繰り返す（table全体のavoidは溢れ・欠落の原因になるため付けない） */
+  table { break-inside: auto; }
+  thead { display: table-header-group; }
   tr, th, td { break-inside: avoid; page-break-inside: avoid; }
   /* 1枚表（クラス×曜日 一覧）: A4横に収まるよう詰めて表示 */
   .onepage-table { table-layout: fixed; width: 100%; font-size: 9px; line-height: 1.3; }
@@ -43,6 +45,8 @@ body {
   .print-grid th.sep-day-r, .print-grid td.sep-day-r { border-right: 3px solid #111 !important; }
   .print-grid tr.sep-day > th, .print-grid tr.sep-day > td { border-top: 3px solid #111 !important; }
   .print-grid tr.sep-day-b > th, .print-grid tr.sep-day-b > td { border-bottom: 3px solid #111 !important; }
+  /* 配慮メモは背景色に頼らず太枠で識別できるようにする（白黒印刷対応） */
+  .memo-box { border: 2px solid #111 !important; background: #ffffff !important; color: #111111 !important; }
 }
 @page {
   size: A4 landscape;
@@ -69,3 +73,4 @@ body {
 .print-preview .print-grid tr.sep-day-b > th, .print-preview .print-grid tr.sep-day-b > td { border-bottom: 3px solid #111; }
 /* プレビューでは改ページ位置を破線で可視化する（印刷時は break-after-page が効く） */
 .print-preview .break-after-page { border-bottom: 2px dashed #b0b0b0; padding-bottom: 1rem; margin-bottom: 1rem; }
+.print-preview .memo-box { border: 2px solid #111; background: #fff !important; color: #111 !important; }

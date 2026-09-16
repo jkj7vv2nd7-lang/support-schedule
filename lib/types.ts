@@ -100,3 +100,23 @@ export function emptyTimetable(): SlotContent[][] {
 export function blankCell(place: "support" | "exchange" = "support"): CellPlan {
   return { place, subject: "", content: "", teacher: "", aideId: null };
 }
+
+// コマ指定（曜日0-4・時限1-6）の要素検証。不正値は除外する
+export function isValidSlot(x: unknown): x is { day: number; period: number } {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return Number.isInteger(o.day) && (o.day as number) >= 0 && (o.day as number) <= 4 &&
+    Number.isInteger(o.period) && (o.period as number) >= 1 && (o.period as number) <= 6;
+}
+
+// 週セルの形状検証。壊れたセルは除外し、温存・割付・出力での例外を防ぐ
+export function isValidCell(x: unknown): x is CellPlan {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return (
+    (o.place === "support" || o.place === "exchange") &&
+    typeof o.subject === "string" && typeof o.content === "string" && typeof o.teacher === "string" &&
+    (o.aideId == null || typeof o.aideId === "string") &&
+    (o.classId == null || typeof o.classId === "string")
+  );
+}

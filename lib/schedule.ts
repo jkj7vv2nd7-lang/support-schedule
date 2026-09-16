@@ -1,4 +1,4 @@
-import { blankCell, slotKey, DAYS, PERIODS, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost, type WeekPlan } from "@/lib/types";
+import { blankCell, isValidCell, isValidSlot, slotKey, DAYS, PERIODS, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost, type WeekPlan } from "@/lib/types";
 
 // 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）
 export function buildWeekCells(
@@ -10,13 +10,17 @@ export function buildWeekCells(
   const out: Record<string, Record<string, CellPlan>> = {};
   for (const st of students) {
     const cls = st.exchangeClassId ? classById.get(st.exchangeClassId) : undefined;
-    const exchangeKeys = new Set(st.exchangeSlots.map((s) => slotKey(s.day, s.period)));
+    // 不正なコマ指定は無視する（旧データ・API経由の混入対策）
+    const exchangeKeys = new Set(
+      (Array.isArray(st.exchangeSlots) ? st.exchangeSlots : []).filter(isValidSlot).map((s) => slotKey(s.day, s.period)),
+    );
     const cur: Record<string, CellPlan> = {};
     for (let day = 0; day < 5; day++) {
       for (let period = 1; period <= 6; period++) {
         const key = slotKey(day, period);
         const kept = prev?.[st.id]?.[key];
-        if (kept) {
+        // 壊れたセル（null・形状不正）は温存せず作り直す
+        if (isValidCell(kept)) {
           cur[key] = kept;
           continue;
         }
@@ -72,7 +76,10 @@ export function applyRoster(
   const classOf = new Map(students.map((s) => [s.id, s.exchangeClassId]));
   const off = new Set<string>();
   for (const a of aides) {
-    for (const s of a.offSlots ?? []) off.add(`${a.id}@${slotKey(s.day, s.period)}`);
+    for (const s of a.offSlots ?? []) {
+      if (!isValidSlot(s)) continue;
+      off.add(`${a.id}@${slotKey(s.day, s.period)}`);
+    }
   }
   const out: Record<string, Record<string, CellPlan>> = {};
   for (const [sid, bySlot] of Object.entries(cells)) {
@@ -110,7 +117,10 @@ export function autoAssignAides(
   };
   const off = new Set<string>();
   for (const a of aides) {
-    for (const s of a.offSlots) off.add(`${a.id}@${slotKey(s.day, s.period)}`);
+    for (const s of a.offSlots ?? []) {
+      if (!isValidSlot(s)) continue;
+      off.add(`${a.id}@${slotKey(s.day, s.period)}`);
+    }
   }
   const load = new Map<string, number>(aides.map((a) => [a.id, 0]));
   // 既存割付を負荷に計上

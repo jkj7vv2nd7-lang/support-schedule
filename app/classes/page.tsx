@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Btn, Card, Field, Notice, StepHeading, TextInput } from "@/components/ui";
 import { DAYS, PERIODS, emptyTimetable, type ExchangeClass, type SlotContent } from "@/lib/types";
-import { K_CLASSES, K_STUDENTS, loadClasses, loadStudents, makeId, saveClasses, saveStudents, validateDismissal } from "@/lib/storage";
+import { K_CLASSES, K_STUDENTS, loadClasses, loadStudents, makeId, normalizeTimetable, saveClasses, saveStudents, validateDismissal } from "@/lib/storage";
 import { detachClassFromStudents } from "@/lib/schedule";
 import { refreshStored, useStored } from "@/lib/store";
 
@@ -19,6 +19,9 @@ async function downscale(file: File, maxDim = 1600): Promise<File> {
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const ctx = canvas.getContext("2d");
       if (!ctx) return file;
+      // 透過PNGはJPEG化で黒背景になるため白で下塗りする
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
       if (!blob) return file;
@@ -33,7 +36,9 @@ async function downscale(file: File, maxDim = 1600): Promise<File> {
 }
 
 export default function ClassesPage() {
-  const items = useStored(K_CLASSES, loadClasses) ?? [];
+  const itemsRaw = useStored(K_CLASSES, loadClasses);
+  // SSR直後はundefinedのため「まだ登録がありません」と誤表示しない
+  const items = itemsRaw ?? [];
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
@@ -156,10 +161,15 @@ export default function ClassesPage() {
       const form = new FormData();
       form.append("image", small, small.name);
       const res = await fetch("/api/timetable", { method: "POST", body: form });
-      const json = (await res.json()) as { ok: boolean; timetable?: SlotContent[][]; error?: string };
+      const json = (await res.json()) as { ok: boolean; timetable?: SlotContent[][]; empty?: boolean; error?: string };
       if (!json.ok || !json.timetable) throw new Error(json.error || "読み取りに失敗しました");
-      setTable(json.timetable);
-      setMessage("時間割を読み取りました。内容を確認・修正してください");
+      // 不正形状（5x6でない等）は正規化して描画クラッシュ・保存後消失を防ぐ
+      setTable(normalizeTimetable(json.timetable));
+      setMessage(
+        json.empty
+          ? "読み取り結果が空でした。写真を明るく・正面から撮り直すか、手入力してください"
+          : "時間割を読み取りました。内容を確認・修正してください",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "読み取りに失敗しました");
     } finally {
@@ -180,7 +190,9 @@ export default function ClassesPage() {
 
       {savedNotice ? <Notice tone="blue">{savedNotice}</Notice> : null}
 
-      {items.length === 0 && editingId === null ? (
+      {itemsRaw === undefined ? (
+        <Card className="py-10 text-center text-sm text-zinc-500">読み込み中…</Card>
+      ) : items.length === 0 && editingId === null ? (
         <Card className="py-10 text-center text-sm text-zinc-500">
           まだ登録がありません。「新しいクラス」から始めましょう。
         </Card>
@@ -278,28 +290,30 @@ export default function ClassesPage() {
             <table className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
                 <tr>
-                  <th className="w-12 border border-zinc-200 bg-zinc-50 px-1 py-1.5 text-xs">時限</th>
+                  <th scope="col" className="w-12 border border-zinc-200 bg-zinc-50 px-1 py-1.5 text-xs">時限</th>
                   {DAYS.map((d) => (
-                    <th key={d} className="border border-zinc-200 bg-zinc-50 px-1 py-1.5 text-xs">{d}</th>
+                    <th scope="col" key={d} className="border border-zinc-200 bg-zinc-50 px-1 py-1.5 text-xs">{d}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {PERIODS.map((p) => (
                   <tr key={p}>
-                    <td className="border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-xs font-bold">{p}</td>
+                    <th scope="row" className="border border-zinc-200 bg-zinc-50 px-1 py-1 text-center text-xs font-bold">{p}</th>
                     {DAYS.map((_, d) => (
                       <td key={d} className="border border-zinc-200 p-1 align-top">
                         <input
                           value={table[d][p - 1].subject}
                           onChange={(e) => setCell(d, p, "subject", e.target.value)}
                           placeholder="教科"
+                          aria-label={`${DAYS[d]}曜${p}時限の教科`}
                           className="w-full rounded border border-transparent px-1 py-0.5 text-xs font-bold focus:border-blue-500 focus:outline-none"
                         />
                         <input
                           value={table[d][p - 1].content}
                           onChange={(e) => setCell(d, p, "content", e.target.value)}
                           placeholder="内容"
+                          aria-label={`${DAYS[d]}曜${p}時限の内容`}
                           className="mt-0.5 w-full rounded border border-transparent px-1 py-0.5 text-[11px] text-zinc-500 focus:border-blue-500 focus:outline-none"
                         />
                       </td>

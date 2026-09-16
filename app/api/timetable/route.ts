@@ -1,11 +1,15 @@
-import { BodyTooLargeError, boundRequestBody, bodyTooLargeMessage, checkContentLength } from "@/lib/api-guard";
+import { boundRequestBody, bodyTooLargeMessage, checkContentLength, isBodyTooLarge } from "@/lib/api-guard";
 import { emptyTimetable } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
-const MODEL = process.env.GEMINI_TIMETABLE_MODEL || "gemini-2.5-flash";
+// モデル名はURLに埋め込むためホワイトリストで検証する（不正値は既定にフォールバック）
+const MODEL = (() => {
+  const m = (process.env.GEMINI_TIMETABLE_MODEL || "").trim();
+  return /^[A-Za-z0-9_.-]+$/.test(m) ? m : "gemini-2.5-flash";
+})();
 
 const SYSTEM = `写真は小学校・中学校の週時間割表です。表を読み取り、次のJSONだけを出力してください（コードフェンス・注釈禁止）。
 {"slots":[{"day":0,"period":1,"subject":"国語","content":"漢字ドリル"}]}
@@ -36,7 +40,8 @@ export function extractTimetableJson(text: string): unknown {
 function sanitize(raw: unknown) {
   const table = emptyTimetable();
   const list: unknown = (raw as { slots?: unknown } | null)?.slots ?? raw;
-  if (!Array.isArray(list)) return table;
+  if (!Array.isArray(list)) return { table, count: 0 };
+  let count = 0;
   for (const s of list.slice(0, 60)) {
     if (!s || typeof s !== "object") continue;
     const o = s as Record<string, unknown>;
@@ -47,8 +52,9 @@ function sanitize(raw: unknown) {
       subject: typeof o.subject === "string" ? o.subject.slice(0, 30) : "",
       content: typeof o.content === "string" ? o.content.slice(0, 100) : "",
     };
+    count += 1;
   }
-  return table;
+  return { table, count };
 }
 
 export async function GET() {
@@ -77,7 +83,7 @@ export async function POST(request: Request) {
       image = v as File;
     }
   } catch (err) {
-    if (err instanceof BodyTooLargeError) {
+    if (isBodyTooLarge(err)) {
       return Response.json({ ok: false, error: bodyTooLargeMessage(err.maxBytes) }, { status: 413 });
     }
     return Response.json({ ok: false, error: "リクエストの形式が不正です" }, { status: 400 });
@@ -109,13 +115,14 @@ export async function POST(request: Request) {
     let res: Response | null = null;
     let lastStatus = 0;
     let lastBody = "";
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    // サーバーレスの実行時間上限に収まるよう、試行は初回+1回・1試行25秒までとする
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, 1500 * 2 ** (attempt - 1) + Math.random() * 500));
+        await new Promise((r) => setTimeout(r, 1500 + Math.random() * 500));
       }
       res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-        { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(60000) },
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(key)}`,
+        { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(25000) },
       );
       if (res.ok) break;
       lastStatus = res.status;
@@ -144,9 +151,11 @@ export async function POST(request: Request) {
     } catch {
       return Response.json({ ok: false, error: "時間割の読み取り結果を解析できませんでした。写真を明るく・正面から撮り直してください" }, { status: 502 });
     }
-    return Response.json({ ok: true, timetable: sanitize(parsed) });
+    const { table, count } = sanitize(parsed);
+    // 有効なコマが0件のときは空の時間割と区別できるよう empty を付ける（呼び出し側で警告表示する）
+    return Response.json({ ok: true, timetable: table, empty: count === 0 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "時間割の読み取りに失敗しました";
+    const message = err instanceof Error ? "時間割の読み取りに失敗しました。時間をおいて再試行してください" : "時間割の読み取りに失敗しました";
     return Response.json({ ok: false, error: message }, { status: 500 });
   }
 }

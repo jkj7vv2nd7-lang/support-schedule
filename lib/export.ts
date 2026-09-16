@@ -299,12 +299,15 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     }
   }
   if (layouts.classOverview) {
-    const ws6 = wb.addWorksheet("クラス×曜日 一覧", { views: [{ showGridLines: false }] });
-    // A4横1枚に収まるよう、幅・高さとも1ページに強制的に収縮する
-    ws6.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { top: 0.3, bottom: 0.3, left: 0.25, right: 0.25, header: 0.15, footer: 0.15 } };
-    ws6.addRow([title]).font = { bold: true, size: 13 };
     const grid = classOverviewGrid(input);
-    putTable(ws6, grid.header, grid.rows, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds });
+    // 交流クラスが0件のときは「時限」1列の空表になるため出力しない
+    if (grid.header.length > 1) {
+      const ws6 = wb.addWorksheet("クラス×曜日 一覧", { views: [{ showGridLines: false }] });
+      // A4横1枚に収まるよう、幅・高さとも1ページに強制的に収縮する
+      ws6.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, margins: { top: 0.3, bottom: 0.3, left: 0.25, right: 0.25, header: 0.15, footer: 0.15 } };
+      ws6.addRow([title]).font = { bold: true, size: 13 };
+      putTable(ws6, grid.header, grid.rows, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds });
+    }
   }
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
@@ -449,13 +452,16 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     }
   }
   if (layouts.classOverview) {
-    needBreak();
     const grid = classOverviewGrid(input);
-    children.push(
-      new Paragraph({ children: [new TextRun({ text: "クラス×曜日 一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-      // 列数が多くなりやすい表なので、1ページに収まりやすいよう小さめのフォントで組む（用紙サイズによっては複数ページに分かれる場合があります）
-      docxTable(grid.header, grid.rows, 13, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds }),
-    );
+    // 交流クラスが0件のときは「時限」1列の空表になるため出力しない
+    if (grid.header.length > 1) {
+      needBreak();
+      children.push(
+        new Paragraph({ children: [new TextRun({ text: "クラス×曜日 一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
+        // 列数が多くなりやすい表なので、1ページに収まりやすいよう小さめのフォントで組む（用紙サイズによっては複数ページに分かれる場合があります）
+        docxTable(grid.header, grid.rows, 13, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds }),
+      );
+    }
   }
   const doc = new Document({
     styles: { default: { document: { run: { font: FONT, size: 18 } } } },
@@ -704,13 +710,20 @@ function pdfSinglePageTable(c: PdfCtx, header: string[], rows: string[][], opts?
   ];
   let chosen = measure(candidates[candidates.length - 1][0], candidates[candidates.length - 1][1]);
   let chosenSize = candidates[candidates.length - 1][0];
+  let fitsSinglePage = false;
   for (const [fontSize, lineH] of candidates) {
     const m = measure(fontSize, lineH);
     if (m.total <= maxHeight) {
       chosen = m;
       chosenSize = fontSize;
+      fitsSinglePage = true;
       break;
     }
+  }
+  // 最小フォントでも1ページに収まらない場合は複数ページの通常表に切り替える（欠落させない）
+  if (!fitsSinglePage) {
+    pdfTable(c, header, rows, opts);
+    return;
   }
   c.doc.fontSize(chosenSize);
 
@@ -828,10 +841,13 @@ export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLa
     }
   }
   if (layouts.classOverview) {
-    needBreak();
-    pdfText(c, "クラス×曜日 一覧", 11, 2);
     const grid = classOverviewGrid(input);
-    pdfSinglePageTable(c, grid.header, grid.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { colSeps: grid.dayStarts, colSepsR: grid.dayEnds });
+    // 交流クラスが0件のときは「時限」1列の空表になるため出力しない
+    if (grid.header.length > 1) {
+      needBreak();
+      pdfText(c, "クラス×曜日 一覧", 11, 2);
+      pdfSinglePageTable(c, grid.header, grid.rows.map((r) => r.map((t) => t.replace(/\n/g, "／"))), { colSeps: grid.dayStarts, colSepsR: grid.dayEnds });
+    }
   }
   return collectPdf(c.doc);
 }

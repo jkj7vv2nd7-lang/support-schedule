@@ -1,7 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import Nav from "@/components/nav";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#1e40af",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -10,13 +15,6 @@ export const metadata: Metadata = {
   },
   description: "特別支援学級の週予定表づくりを時短するアプリです。",
 };
-
-const NAV = [
-  { href: "/", label: "ホーム" },
-  { href: "/classes", label: "交流クラス" },
-  { href: "/people", label: "児童・介助員" },
-  { href: "/weeks", label: "週予定" },
-];
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -32,17 +30,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 支援週予定メーカー
               </span>
             </Link>
-            <nav className="flex min-w-0 flex-1 items-center justify-end gap-0.5 overflow-x-auto">
-              {NAV.map((n) => (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  className="whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
-                >
-                  {n.label}
-                </Link>
-              ))}
-            </nav>
+            <Nav />
           </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-6">{children}</main>

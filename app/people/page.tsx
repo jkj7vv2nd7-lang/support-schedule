@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Btn, Card, Field, Notice, Select, StepHeading, TextInput } from "@/components/ui";
-import { DAYS, PERIODS, slotKey, type Aide, type ExchangeSlot, type Student } from "@/lib/types";
+import { DAYS, PERIODS, isValidSlot, slotKey, type Aide, type ExchangeSlot, type Student } from "@/lib/types";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveAides, saveStudents, saveWeeks } from "@/lib/storage";
 import { detachAideFromWeeks, detachStudentFromWeeks } from "@/lib/schedule";
 import { refreshStored, useStored } from "@/lib/store";
@@ -13,6 +13,20 @@ function toggleSlot(list: ExchangeSlot[], day: number, period: number): Exchange
     return list.filter((s) => slotKey(s.day, s.period) !== key);
   }
   return [...list, { day, period }];
+}
+
+// 保存時の正規化（範囲外・重複の除去。旧データ混入時の割付例外を防ぐ）
+function cleanSlots(list: ExchangeSlot[]): ExchangeSlot[] {
+  const seen = new Set<string>();
+  const out: ExchangeSlot[] = [];
+  for (const s of list) {
+    if (!isValidSlot(s)) continue;
+    const k = slotKey(s.day, s.period);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ day: s.day, period: s.period });
+  }
+  return out;
 }
 
 function SlotGrid({
@@ -156,7 +170,7 @@ export default function PeoplePage() {
     setError(null);
     const isDuplicate = students.some((x) => x.id !== editingStudent && x.name === trimmed);
     // 交流先が未選択のコマ指定は無効になるため落とす
-    const slots = sClassId ? sSlots : [];
+    const slots = sClassId ? cleanSlots(sSlots) : [];
     if (editingStudent) {
       persistStudents(
         students.map((x) =>
@@ -189,10 +203,11 @@ export default function PeoplePage() {
     }
     setError(null);
     const isDuplicate = aides.some((x) => x.id !== editingAide && x.name === trimmed);
+    const off = cleanSlots(aOff);
     if (editingAide) {
-      persistAides(aides.map((x) => (x.id === editingAide ? { ...x, name: trimmed, offSlots: aOff } : x)));
+      persistAides(aides.map((x) => (x.id === editingAide ? { ...x, name: trimmed, offSlots: off } : x)));
     } else {
-      persistAides([{ id: makeId(), name: trimmed, offSlots: aOff }, ...aides]);
+      persistAides([{ id: makeId(), name: trimmed, offSlots: off }, ...aides]);
     }
     resetAideForm();
     setSavedNotice(isDuplicate ? `${trimmed}を保存しました（同じ名前の介助員が他にもいます）` : `${trimmed}を保存しました`);
