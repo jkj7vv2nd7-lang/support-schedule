@@ -48,6 +48,7 @@ export default function ClassesPage() {
   const [table, setTable] = useState<SlotContent[][]>(() => emptyTimetable());
   const [busy, setBusy] = useState(false);
   const [aiReady, setAiReady] = useState<boolean | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export default function ClassesPage() {
   }
 
   function startNew() {
+    if (!guardDirty()) return;
     setEditingId("new");
     setName("");
     setGrade("");
@@ -94,9 +96,11 @@ export default function ClassesPage() {
     setTable(emptyTimetable());
     setError(null);
     setMessage(null);
+    setDirty(false);
   }
 
   function startEdit(item: ExchangeClass) {
+    if (!guardDirty()) return;
     setEditingId(item.id);
     setName(item.name);
     setGrade(item.grade);
@@ -110,9 +114,17 @@ export default function ClassesPage() {
     setTable(item.timetable.map((row) => row.map((c) => ({ ...c }))));
     setError(null);
     setMessage(null);
+    setDirty(false);
+  }
+
+  // 編集中の内容があるまま別クラスを開く・キャンセルする場合は確認する
+  function guardDirty(): boolean {
+    if (!dirty) return true;
+    return window.confirm("編集中の内容が破棄されます。よろしいですか？");
   }
 
   function setCell(day: number, period: number, field: "subject" | "content", value: string) {
+    setDirty(true);
     setTable((prev) => prev.map((row, d) => (d === day ? row.map((c, p) => (p === period - 1 ? { ...c, [field]: value } : c)) : row)));
   }
 
@@ -136,6 +148,7 @@ export default function ClassesPage() {
       persist(items.map((x) => (x.id === editingId ? { ...x, name: name.trim(), grade: grade.trim(), timetable: table, morning: morningClean, dismissal: dismissalClean, notice: noticeClean, updatedAt: now } : x)));
     }
     setEditingId(null);
+    setDirty(false);
     setSavedNotice(editingId === "new" ? "登録しました" : "更新しました");
   }
 
@@ -148,7 +161,10 @@ export default function ClassesPage() {
       saveStudents(detached.students);
       refreshStored(K_STUDENTS, loadStudents);
     }
-    if (editingId === id) setEditingId(null);
+    if (editingId === id) {
+      setEditingId(null);
+      setDirty(false);
+    }
     setSavedNotice("削除しました");
   }
 
@@ -165,6 +181,7 @@ export default function ClassesPage() {
       if (!json.ok || !json.timetable) throw new Error(json.error || "読み取りに失敗しました");
       // 不正形状（5x6でない等）は正規化して描画クラッシュ・保存後消失を防ぐ
       setTable(normalizeTimetable(json.timetable));
+      setDirty(true);
       setMessage(
         json.empty
           ? "読み取り結果が空でした。写真を明るく・正面から撮り直すか、手入力してください"
@@ -220,10 +237,10 @@ export default function ClassesPage() {
           <StepHeading step={editingId === "new" ? "＋" : "✎"}>クラスの時間割</StepHeading>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label="クラス名">
-              <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="例：3年2組" />
+              <TextInput value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} placeholder="例：3年2組" />
             </Field>
             <Field label="学年・備考">
-              <TextInput value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="例：3年" />
+              <TextInput value={grade} onChange={(e) => { setGrade(e.target.value); setDirty(true); }} placeholder="例：3年" />
             </Field>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -234,7 +251,7 @@ export default function ClassesPage() {
                   <input
                     key={d}
                     value={morning[i] ?? ""}
-                    onChange={(e) => setMorning((prev) => prev.map((m, j) => (j === i ? e.target.value : m)))}
+                    onChange={(e) => { setMorning((prev) => prev.map((m, j) => (j === i ? e.target.value : m))); setDirty(true); }}
                     placeholder={d}
                     aria-label={`朝活動（${d}曜）`}
                     className="w-full rounded-lg border border-zinc-300 bg-white px-1 py-2 text-center text-xs focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
@@ -243,7 +260,7 @@ export default function ClassesPage() {
               </div>
             </div>
             <Field label="連絡等（任意）">
-              <TextInput value={notice} onChange={(e) => setNotice(e.target.value)} placeholder="例：水曜は掃除なし" />
+              <TextInput value={notice} onChange={(e) => { setNotice(e.target.value); setDirty(true); }} placeholder="例：水曜は掃除なし" />
             </Field>
           </div>
           <div className="mt-4">
@@ -252,8 +269,8 @@ export default function ClassesPage() {
               {DAYS.map((d, i) => (
                 <input
                   key={d}
-                  value={dismissal[i] ?? ""}
-                  onChange={(e) => setDismissal((prev) => prev.map((m, j) => (j === i ? e.target.value : m)))}
+                    value={dismissal[i] ?? ""}
+                    onChange={(e) => { setDismissal((prev) => prev.map((m, j) => (j === i ? e.target.value : m))); setDirty(true); }}
                   placeholder="例：14:20"
                   aria-label={`下校時刻（${d}曜）`}
                   className="w-full rounded-lg border border-zinc-300 bg-white px-1 py-2 text-center text-xs focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
@@ -325,7 +342,7 @@ export default function ClassesPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Btn onClick={save}>保存する</Btn>
-            <Btn variant="secondary" onClick={() => setEditingId(null)}>キャンセル</Btn>
+            <Btn variant="secondary" onClick={() => { if (guardDirty()) { setEditingId(null); setDirty(false); } }}>キャンセル</Btn>
           </div>
         </Card>
       ) : null}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { POST as exportPost } from "@/app/api/export/route";
 import { isBodyTooLarge } from "@/lib/api-guard";
-import { applyRoster, autoAssignAides, buildWeekCells } from "@/lib/schedule";
+import { applyRoster, autoAssignAides, buildWeekCells, dropGhostAides } from "@/lib/schedule";
 import {
   isValidWeek,
   isValidWeekStart,
@@ -10,7 +10,7 @@ import {
   normalizeTimetable,
   normalizeWeek,
 } from "@/lib/storage";
-import { emptyTimetable, isValidCell, isValidSlot } from "@/lib/types";
+import { emptyTimetable, isValidCell, isValidSlot, type CellPlan } from "@/lib/types";
 
 describe("slot/cell validation", () => {
   it("isValidSlotは範囲内のみ通す", () => {
@@ -97,6 +97,68 @@ describe("broken data does not crash scheduling", () => {
     const cells = buildWeekCells(students, classes);
     expect(() => applyRoster(cells, students, [], undefined, aides)).not.toThrow();
     expect(() => autoAssignAides(cells, aides)).not.toThrow();
+  });
+});
+
+describe("buildWeekCells refreshExchange", () => {
+  const tt = emptyTimetable();
+  tt[0][0] = { subject: "算数", content: "ドリル" };
+  tt[0][1] = { subject: "理科", content: "" };
+  tt[0][2] = { subject: "音楽", content: "" };
+  const students = [
+    {
+      id: "s1",
+      name: "山田",
+      exchangeClassId: "c1",
+      exchangeSlots: [
+        { day: 0, period: 1 },
+        { day: 0, period: 2 },
+        { day: 0, period: 3 },
+      ],
+    },
+  ];
+  const classes = [{ id: "c1", name: "3年2組", grade: "3年", timetable: tt, updatedAt: 1 }];
+  const prev: Record<string, Record<string, CellPlan>> = {
+    s1: {
+      "0-1": { place: "exchange", subject: "国語", content: "旧内容", teacher: "田中", aideId: "a1", classId: "c1" },
+      "0-2": { place: "support", subject: "自習", content: "手入力", teacher: "", aideId: null },
+      "0-3": { place: "support", subject: "", content: "", teacher: "", aideId: null },
+    },
+  };
+
+  it("通常は既存セルを温存する", () => {
+    const cells = buildWeekCells(students, classes, prev);
+    expect(cells.s1["0-1"].subject).toBe("国語");
+  });
+
+  it("再反映は交流セルの教科・内容だけ更新し担当は保持する", () => {
+    const cells = buildWeekCells(students, classes, prev, { refreshExchange: true });
+    const c = cells.s1["0-1"];
+    expect(c.subject).toBe("算数");
+    expect(c.content).toBe("ドリル");
+    expect(c.teacher).toBe("田中");
+    expect(c.aideId).toBe("a1");
+    expect(c.place).toBe("exchange");
+  });
+
+  it("手入力のある支援セルは温存し、空セルは交流に起こす", () => {
+    const cells = buildWeekCells(students, classes, prev, { refreshExchange: true });
+    expect(cells.s1["0-2"]).toMatchObject({ place: "support", subject: "自習" });
+    expect(cells.s1["0-3"]).toMatchObject({ place: "exchange", subject: "音楽" });
+  });
+});
+
+describe("dropGhostAides", () => {
+  it("存在しない介助員参照だけ外す", () => {
+    const cells = {
+      s1: {
+        "0-1": { place: "support", subject: "", content: "", teacher: "", aideId: "ghost" },
+        "0-2": { place: "support", subject: "", content: "", teacher: "", aideId: "a1" },
+      },
+    } as unknown as Parameters<typeof dropGhostAides>[0];
+    const out = dropGhostAides(cells, [{ id: "a1", name: "佐藤", offSlots: [] }]);
+    expect(out.s1["0-1"].aideId).toBeNull();
+    expect(out.s1["0-2"].aideId).toBe("a1");
   });
 });
 

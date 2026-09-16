@@ -62,6 +62,7 @@ function SlotGrid({
                     <button
                       type="button"
                       aria-pressed={on}
+                      aria-label={`${DAYS[d]}曜${p}時限${on ? "（選択中）" : ""}${h ? `：${h}` : ""}`}
                       title={h || `${DAYS[d]}曜${p}時限`}
                       onClick={() => onToggle(d, p)}
                       className={`flex h-9 w-full flex-col items-center justify-center rounded-lg border text-[10px] leading-tight transition-colors ${

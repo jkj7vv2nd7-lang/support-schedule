@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, formatWeek, mondayOf, sanitizePosts, sortClasses } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, dropGhostAides, formatWeek, mondayOf, sanitizePosts, sortClasses } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -89,14 +89,8 @@ export default function WeeksPage() {
       const src = weeks.find((w) => w.id === copyFrom);
       const copied = src ? (JSON.parse(JSON.stringify(src.cells)) as WeekPlan["cells"]) : undefined;
       // 新規児童のセル補完・削除済み児童の幽霊セル除去（buildWeekCellsの出力は現行児童のみ）
-      const completed = buildWeekCells(students, classes, copied);
-      // 削除済み介助員の幽霊参照を外す
-      const aids = new Set(aides.map((a) => a.id));
-      for (const bySlot of Object.values(completed)) {
-        for (const [key, cell] of Object.entries(bySlot)) {
-          if (cell.aideId && !aids.has(cell.aideId)) bySlot[key] = { ...cell, aideId: null };
-        }
-      }
+      // 削除済み介助員の幽霊参照も外す
+      const completed = dropGhostAides(buildWeekCells(students, classes, copied), aides);
       cells = completed;
       // 担当表は引き継ぐ（消えた児童・介助員・クラスは落とす）。欠席・行事メモは新週のため引き継がない
       posts = src ? sanitizePosts(src.posts, students, aides, classes) : [];
@@ -114,13 +108,16 @@ export default function WeeksPage() {
   function updateCells(weekId: string, fn: (cells: WeekPlan["cells"]) => WeekPlan["cells"]) {
     persist(
       weeks.map((w) =>
-        w.id === weekId ? { ...w, cells: fn(buildWeekCells(students, classes, w.cells)), updatedAt: Date.now() } : w,
+        w.id === weekId
+          ? { ...w, cells: dropGhostAides(fn(buildWeekCells(students, classes, w.cells)), aides), updatedAt: Date.now() }
+          : w,
       ),
     );
   }
 
   function refreshFromMaster(week: WeekPlan) {
-    updateCells(week.id, (cells) => buildWeekCells(students, classes, cells));
+    if (!window.confirm("交流クラスの時間割を、交流セルの「教科・内容」に再反映します（担当の先生・介助員・支援学級のセルは保持されます）。よろしいですか？")) return;
+    updateCells(week.id, (cells) => buildWeekCells(students, classes, cells, { refreshExchange: true }));
     setNotice("交流クラスの時間割を反映しました");
   }
 
@@ -232,8 +229,9 @@ export default function WeeksPage() {
         <StepHeading step="＋">新しい週予定</StepHeading>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-zinc-700">週（月曜）</label>
+            <label htmlFor="new-week-date" className="mb-1.5 block text-sm font-medium text-zinc-700">週（月曜）</label>
             <input
+              id="new-week-date"
               type="date"
               value={newDate}
               onChange={(e) => setNewDate(e.target.value)}
@@ -241,8 +239,9 @@ export default function WeeksPage() {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-zinc-700">コピー元</label>
+            <label htmlFor="copy-from-week" className="mb-1.5 block text-sm font-medium text-zinc-700">コピー元</label>
             <select
+              id="copy-from-week"
               value={copyFrom}
               onChange={(e) => setCopyFrom(e.target.value)}
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm"

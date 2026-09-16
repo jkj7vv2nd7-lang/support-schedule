@@ -1,10 +1,14 @@
 import { blankCell, isValidCell, isValidSlot, slotKey, DAYS, PERIODS, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost, type WeekPlan } from "@/lib/types";
 
-// 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）
+// 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）。
+// refreshExchange を付けると「交流内容を再反映」になる：交流セルの教科・内容・交流先を
+// 時間割から上書きする（担当の先生・介助員・場所は保持）。手入力のある支援セルは温存し、
+// 空の支援セルは交流セルに起こす。
 export function buildWeekCells(
   students: Student[],
   classes: ExchangeClass[],
   prev?: Record<string, Record<string, CellPlan>>,
+  opts?: { refreshExchange?: boolean },
 ): Record<string, Record<string, CellPlan>> {
   const classById = new Map(classes.map((c) => [c.id, c]));
   const out: Record<string, Record<string, CellPlan>> = {};
@@ -18,28 +22,73 @@ export function buildWeekCells(
     for (let day = 0; day < 5; day++) {
       for (let period = 1; period <= 6; period++) {
         const key = slotKey(day, period);
-        const kept = prev?.[st.id]?.[key];
+        const raw = prev?.[st.id]?.[key];
         // 壊れたセル（null・形状不正）は温存せず作り直す
-        if (isValidCell(kept)) {
+        const kept = isValidCell(raw) ? raw : undefined;
+        const slotCls = exchangeKeys.has(key) ? cls : undefined;
+        if (!opts?.refreshExchange) {
+          if (kept) {
+            cur[key] = kept;
+            continue;
+          }
+          if (slotCls) {
+            const src = slotCls.timetable[day]?.[period - 1];
+            cur[key] = {
+              place: "exchange",
+              subject: src?.subject ?? "",
+              content: src?.content ?? "",
+              teacher: "",
+              aideId: null,
+              classId: slotCls.id,
+            };
+          } else {
+            cur[key] = blankCell("support");
+          }
+          continue;
+        }
+        if (slotCls) {
+          const src = slotCls.timetable[day]?.[period - 1];
+          if (kept?.place === "exchange") {
+            cur[key] = { ...kept, subject: src?.subject ?? "", content: src?.content ?? "", classId: slotCls.id };
+          } else if (kept && (kept.subject || kept.content || kept.teacher || kept.aideId)) {
+            cur[key] = kept;
+          } else {
+            cur[key] = {
+              place: "exchange",
+              subject: src?.subject ?? "",
+              content: src?.content ?? "",
+              teacher: "",
+              aideId: null,
+              classId: slotCls.id,
+            };
+          }
+          continue;
+        }
+        if (kept) {
           cur[key] = kept;
           continue;
         }
-        if (exchangeKeys.has(key) && cls) {
-          const src = cls.timetable[day]?.[period - 1];
-          cur[key] = {
-            place: "exchange",
-            subject: src?.subject ?? "",
-            content: src?.content ?? "",
-            teacher: "",
-            aideId: null,
-            classId: cls.id,
-          };
-        } else {
-          cur[key] = blankCell("support");
-        }
+        cur[key] = blankCell("support");
       }
     }
     out[st.id] = cur;
+  }
+  return out;
+}
+
+// 削除済み介助員の幽霊参照を外す（週コピー・旧データの掃除用）
+export function dropGhostAides(
+  cells: Record<string, Record<string, CellPlan>>,
+  aides: Aide[],
+): Record<string, Record<string, CellPlan>> {
+  const ids = new Set(aides.map((a) => a.id));
+  const out: Record<string, Record<string, CellPlan>> = {};
+  for (const [sid, bySlot] of Object.entries(cells)) {
+    const next: Record<string, CellPlan> = {};
+    for (const [key, cell] of Object.entries(bySlot)) {
+      next[key] = cell.aideId && !ids.has(cell.aideId) ? { ...cell, aideId: null } : cell;
+    }
+    out[sid] = next;
   }
   return out;
 }
