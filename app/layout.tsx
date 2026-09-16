@@ -13,7 +13,20 @@ export const metadata: Metadata = {
     default: "支援週予定メーカー",
     template: "%s | 支援週予定メーカー",
   },
-  description: "特別支援学級の週予定表づくりを時短するアプリです。",
+  description: "特別支援学級の週予定表づくりを時短するアプリです。交流時間割の取り込み・介助員配置・印刷・PDF/Excel/Word出力に対応。",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon.svg" },
+  openGraph: {
+    title: "支援週予定メーカー",
+    description: "特別支援学級の週予定表づくりを時短するアプリです。",
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "支援週予定メーカー",
+    description: "特別支援学級の週予定表づくりを時短するアプリです。",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

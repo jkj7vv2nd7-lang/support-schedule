@@ -6,6 +6,42 @@ export const K_CLASSES = "support-schedule:classes:v1";
 export const K_STUDENTS = "support-schedule:students:v1";
 export const K_AIDES = "support-schedule:aides:v1";
 export const K_WEEKS = "support-schedule:weeks:v1";
+export const K_SETTINGS = "support-schedule:settings:v1";
+
+// 全校共通の設定（学校名は印刷・出力の表題に使う）
+export type Settings = {
+  schoolName: string;
+};
+
+export function normalizeSettings(x: unknown): Settings {
+  const o = x && typeof x === "object" ? (x as Record<string, unknown>) : {};
+  const raw = typeof o.schoolName === "string" ? o.schoolName.trim() : "";
+  return { schoolName: raw.slice(0, 60) };
+}
+
+function loadSettingsRaw(): Settings {
+  if (!isBrowser()) return { schoolName: "" };
+  try {
+    const raw = window.localStorage.getItem(K_SETTINGS);
+    if (!raw) return { schoolName: "" };
+    return normalizeSettings(JSON.parse(raw) as unknown);
+  } catch {
+    return { schoolName: "" };
+  }
+}
+
+function saveSettingsRaw(v: Settings): boolean {
+  if (!isBrowser()) return true;
+  try {
+    window.localStorage.setItem(K_SETTINGS, JSON.stringify(normalizeSettings(v)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const loadSettings = () => loadSettingsRaw();
+export const saveSettings = (v: Settings) => saveSettingsRaw(v);
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";

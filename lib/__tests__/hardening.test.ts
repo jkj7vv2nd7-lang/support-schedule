@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { POST as exportPost } from "@/app/api/export/route";
 import { isBodyTooLarge } from "@/lib/api-guard";
-import { applyRoster, autoAssignAides, buildWeekCells, dropGhostAides } from "@/lib/schedule";
+import { buildSampleData } from "@/lib/sample";
+import { applyRoster, autoAssignAides, buildWeekCells, dropGhostAides, exportTitle } from "@/lib/schedule";
 import {
+  isValidAide,
+  isValidClass,
+  isValidStudent,
   isValidWeek,
   isValidWeekStart,
   normalizeAide,
+  normalizeSettings,
   normalizeStudent,
   normalizeTimetable,
   normalizeWeek,
@@ -162,6 +167,47 @@ describe("dropGhostAides", () => {
   });
 });
 
+describe("settings & title", () => {
+  it("normalizeSettingsは前後空白を除き60文字に丸める", () => {
+    expect(normalizeSettings({ schoolName: "  さくら小  " })).toEqual({ schoolName: "さくら小" });
+    expect(normalizeSettings(null)).toEqual({ schoolName: "" });
+    expect(normalizeSettings({ schoolName: "あ".repeat(100) }).schoolName.length).toBe(60);
+  });
+
+  it("exportTitleは学校名を表題に付ける", () => {
+    const withSchool = exportTitle("2026-09-14", "さくら小");
+    expect(withSchool.startsWith("さくら小 週予定表 2026-09-14")).toBe(true);
+    expect(exportTitle("2026-09-14").startsWith("週予定表 2026-09-14")).toBe(true);
+    expect(exportTitle("2026-09-14", "   ")).toBe(exportTitle("2026-09-14"));
+  });
+});
+
+describe("sample data", () => {
+  it("妥当な一式を生成する", () => {
+    const s = buildSampleData();
+    expect(s.classes.length).toBe(2);
+    expect(s.students.length).toBe(3);
+    expect(s.aides.length).toBe(2);
+    expect(s.weeks.length).toBe(1);
+    expect(s.classes.every(isValidClass)).toBe(true);
+    expect(s.students.every(isValidStudent)).toBe(true);
+    expect(s.aides.every(isValidAide)).toBe(true);
+    const w = s.weeks[0];
+    expect(isValidWeek(w)).toBe(true);
+    for (const st of s.students) {
+      expect(Object.keys(w.cells[st.id] ?? {}).length).toBe(30);
+    }
+    const sids = new Set(s.students.map((x) => x.id));
+    const aids = new Set(s.aides.map((x) => x.id));
+    const cids = new Set(s.classes.map((x) => x.id));
+    for (const p of w.posts ?? []) {
+      expect(aids.has(p.aideId)).toBe(true);
+      expect(p.studentIds.every((id) => sids.has(id))).toBe(true);
+      expect(p.classIds.every((id) => cids.has(id))).toBe(true);
+    }
+  });
+});
+
 describe("normalizeTimetable", () => {
   it("部分的な入力を5x6に補完する", () => {
     const t = normalizeTimetable([[{ subject: "国語", content: "" }]]);
@@ -203,8 +249,7 @@ describe("export route guards", () => {
     expect(res.status).toBe(400);
   });
 
-  it("交流11クラス超の1枚表は400で案内する", async () => {
-    const tt = emptyTimetable();
+  it("交流11クラス超の1枚表は400で案内する", async () => {    const tt = emptyTimetable();
     const students = Array.from({ length: 11 }, (_, i) => ({
       id: `s${i}`,
       name: `児童${i}`,
@@ -230,5 +275,36 @@ describe("export route guards", () => {
     const res = await exportPost(req);
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error?: string }).error ?? "").toContain("クラス別");
+  });
+
+  it("学校名つき・不正settingsでも出力できる", async () => {
+    const mk = (settings: unknown) =>
+      new Request("http://localhost/api/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ format: "xlsx", data: { ...baseData("2026-09-14"), settings }, layouts: { sheets: true } }),
+      });
+    expect((await exportPost(mk({ schoolName: "さくら小" }))).status).toBe(200);
+    expect((await exportPost(mk("oops"))).status).toBe(200);
+  });
+
+  it("xlsxの表題に学校名が入る", async () => {
+    const { buildWeekXlsx } = await import("@/lib/export");
+    const { default: ExcelJS } = await import("exceljs");
+    const buf = await buildWeekXlsx(
+      {
+        week: { id: "w", weekStart: "2026-09-14", cells: {}, createdAt: 1, updatedAt: 1 },
+        students: [],
+        aides: [],
+        classes: [],
+        settings: { schoolName: "さくら小" },
+      },
+      { sheets: true, overview: false, exchange: false, aides: false, classDaily: false, classOverview: false },
+    );
+    const wb = new ExcelJS.Workbook();
+    const bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    await wb.xlsx.load(bytes);
+    const ws = wb.getWorksheet("児童別");
+    expect(String(ws?.getCell("A1").value ?? "")).toContain("さくら小 週予定表");
   });
 });

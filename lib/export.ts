@@ -4,13 +4,15 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { DAYS, PERIODS, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
-import { addDays, classDayTable, classOverviewTable, daySections, formatWeek, sortClasses } from "@/lib/schedule";
+import { addDays, classDayTable, classOverviewTable, daySections, exportTitle, sortClasses } from "@/lib/schedule";
 
 export type WeekExportInput = {
   week: WeekPlan;
   students: Student[];
   aides: Aide[];
   classes: ExchangeClass[];
+  // 学校名（印刷・出力の表題に付ける。全国の学校で使うための設定）
+  settings?: { schoolName?: string };
 };
 
 export type WeekExportLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean; classDaily: boolean; classOverview: boolean };
@@ -198,7 +200,7 @@ export type TableSepOpts = {
 
 export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
+  const title = exportTitle(input.week.weekStart, input.settings?.schoolName);
   const putTable = (ws: ExcelJS.Worksheet, header: string[], rows: string[][], opts?: TableSepOpts) => {
     const colCount = header.length;
     const outer = opts?.outer !== false;
@@ -381,7 +383,7 @@ function pageBreakPara() {
 }
 
 export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
-  const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
+  const title = exportTitle(input.week.weekStart, input.settings?.schoolName);
   const children: Array<Paragraph | Table> = [
     new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 30, font: FONT })], spacing: { after: 80 } }),
   ];
@@ -791,7 +793,7 @@ function pdfSinglePageTable(c: PdfCtx, header: string[], rows: string[][], opts?
 
 export async function buildWeekPdf(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
   const c = makePdf();
-  const title = `週予定表 ${input.week.weekStart}（${formatWeek(input.week.weekStart)}）`;
+  const title = exportTitle(input.week.weekStart, input.settings?.schoolName);
   pdfText(c, title, 14, 4);
   let started = false;
   const needBreak = () => {

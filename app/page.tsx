@@ -1,5 +1,7 @@
 import Link from "next/link";
 import BackupButtons from "@/components/backup-buttons";
+import SampleButton from "@/components/sample-button";
+import SchoolSettings from "@/components/school-settings";
 import { Card } from "@/components/ui";
 
 const STEPS = [
@@ -49,6 +51,24 @@ export default function HomePage() {
           </Link>
         ))}
       </div>
+      <Card>
+        <h2 className="text-sm font-bold">学校名の設定</h2>
+        <p className="mt-1 text-sm leading-relaxed text-zinc-600">
+          印刷・PDF・Excel・Wordの表題に学校名を入れられます。全国どの学校でもそのまま配布資料に使えます。
+        </p>
+        <div className="no-print">
+          <SchoolSettings />
+        </div>
+      </Card>
+      <Card>
+        <h2 className="text-sm font-bold">まずは試してみる</h2>
+        <p className="mt-1 text-sm leading-relaxed text-zinc-600">
+          サンプルデータ（交流クラス・児童・介助員・今週の予定）を読み込めば、登録なしで印刷やファイル出力を体験できます。データが空のときのみ実行できます。
+        </p>
+        <div className="no-print">
+          <SampleButton />
+        </div>
+      </Card>
       <Card>
         <h2 className="text-sm font-bold">先週コピーでさらに時短</h2>
         <p className="mt-1 text-sm leading-relaxed text-zinc-600">

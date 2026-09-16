@@ -13,8 +13,8 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, dropGhostAides, formatWeek, mondayOf, sanitizePosts, sortClasses } from "@/lib/schedule";
-import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, dropGhostAides, exportTitle, formatWeek, mondayOf, sanitizePosts, sortClasses } from "@/lib/schedule";
+import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadSettings, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
 
@@ -43,6 +43,8 @@ export default function WeeksPage() {
   const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   const [notice, setNotice] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  // 学校名（印刷・出力の表題用。ホームで設定。localStorageはクライアントでのみ読む）
+  const [schoolName] = useState(() => loadSettings().schoolName);
 
   useEffect(() => {
     if (!notice) return;
@@ -298,7 +300,7 @@ export default function WeeksPage() {
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => setShowPreview((v) => !v)}>
                     {showPreview ? "プレビューを閉じる" : "印刷プレビュー"}
                   </Btn>
-                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
+                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} settings={{ schoolName }} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
                 </div>
                 <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
                   <span className="text-xs font-bold text-zinc-600">出力する表（印刷・保存共通）：</span>
@@ -559,11 +561,11 @@ export default function WeeksPage() {
               </div>
             ) : null}
 
-            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} /> : null}
+            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} schoolName={schoolName} /> : null}
             {isOpen && open && showPreview ? (
               <div className="no-print print-preview mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-4">
                 <p className="mb-2 text-xs font-bold text-zinc-500">印刷プレビュー（A4横・白背景。破線は改ページ位置の目安）</p>
-                <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} preview />
+                <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} schoolName={schoolName} preview />
               </div>
             ) : null}
           </Card>
@@ -581,6 +583,7 @@ function WeekPrint({
   aides,
   classes,
   layouts,
+  schoolName = "",
   preview = false,
 }: {
   weeks: WeekPlan[];
@@ -588,6 +591,7 @@ function WeekPrint({
   aides: Aide[];
   classes: ExchangeClass[];
   layouts: PrintLayouts;
+  schoolName?: string;
   preview?: boolean;
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
@@ -603,7 +607,7 @@ function WeekPrint({
             {overview && overview.columns.length > 0 ? (
               <div className={layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily ? "break-after-page" : undefined}>
                 <h2 className="text-lg font-bold">
-                  週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
+                  {exportTitle(w.weekStart, schoolName)}
                 </h2>
                 <h3 className="mt-2 text-sm font-bold">クラス×曜日 一覧</h3>
                 <table className="onepage-table print-grid mt-1 w-full border-collapse">
@@ -635,7 +639,7 @@ function WeekPrint({
                   <div key={s.id} className={laterAfterSheets(si < sheetStudents.length - 1) ? "break-after-page" : undefined}>
                 {si === 0 && !overview ? (
                   <h2 className="text-lg font-bold">
-                    週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
+                    {exportTitle(w.weekStart, schoolName)}
                   </h2>
                 ) : null}
                 <h3 className="mt-4 text-sm font-bold">{s.name}</h3>

@@ -226,6 +226,12 @@ export function formatWeek(weekStart: string): string {
   return `${f(weekStart)}〜${f(end)}の週`;
 }
 
+// 印刷・出力の表題を作る共通処理（学校名があれば先頭に付ける。全国の学校で使うための設定）
+export function exportTitle(weekStart: string, schoolName?: string): string {
+  const name = typeof schoolName === "string" ? schoolName.trim().slice(0, 60) : "";
+  return `${name ? `${name} ` : ""}週予定表 ${weekStart}（${formatWeek(weekStart)}）`;
+}
+
 export function aideName(aides: Aide[], id: string | null): string {
   if (!id) return "";
   return aides.find((a) => a.id === id)?.name ?? "";

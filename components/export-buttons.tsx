@@ -12,6 +12,7 @@ export default function ExportButtons({
   classes,
   layouts,
   layoutsOn,
+  settings,
   onError,
   onSuccess,
 }: {
@@ -21,6 +22,7 @@ export default function ExportButtons({
   classes: ExchangeClass[];
   layouts: WeekExportLayouts;
   layoutsOn: boolean;
+  settings?: { schoolName?: string };
   onError: (msg: string | null) => void;
   onSuccess?: (format: "pdf" | "xlsx" | "docx") => void;
 }) {
@@ -33,7 +35,7 @@ export default function ExportButtons({
       const res = await fetch("/api/export", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ format, data: { week, students, aides, classes }, layouts }),
+        body: JSON.stringify({ format, data: { week, students, aides, classes, settings }, layouts }),
       });
       if (!res.ok) {
         const json: { error?: string } | null = await res.json().catch(() => null);

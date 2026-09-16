@@ -1,0 +1,18 @@
+{
+  "name": "支援週予定メーカー",
+  "short_name": "週予定",
+  "description": "特別支援学級の週予定表づくりを時短するアプリです。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e40af",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
