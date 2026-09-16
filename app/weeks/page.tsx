@@ -35,7 +35,6 @@ export default function WeeksPage() {
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
   const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false });
   const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
-  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
   const [notice, setNotice] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -273,10 +272,10 @@ export default function WeeksPage() {
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => runAutoAssign(open)}>
                     介助員を自動割付
                   </Btn>
-                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!printLayoutsOn} onClick={() => window.print()}>
+                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => window.print()}>
                     印刷する
                   </Btn>
-                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!printLayoutsOn} onClick={() => setShowPreview((v) => !v)}>
+                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => setShowPreview((v) => !v)}>
                     {showPreview ? "プレビューを閉じる" : "印刷プレビュー"}
                   </Btn>
                   <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
@@ -313,7 +312,7 @@ export default function WeeksPage() {
                   <div className="mt-2 grid grid-cols-5 gap-1">
                     {DAYS.map((d, i) => (
                       <input
-                        key={d}
+                        key={`${open.id}-${i}`}
                         defaultValue={open.dayNotes?.[i] ?? ""}
                         onBlur={(e) => setDayNote(open.id, i, e.target.value)}
                         placeholder={d}
@@ -541,8 +540,8 @@ export default function WeeksPage() {
 
             {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} /> : null}
             {isOpen && open && showPreview ? (
-              <div className="no-print mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-4">
-                <p className="mb-2 text-xs font-bold text-zinc-500">印刷プレビュー（実際の印刷では白黒・A4横になります）</p>
+              <div className="no-print print-preview mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-4">
+                <p className="mb-2 text-xs font-bold text-zinc-500">印刷プレビュー（A4横・白背景。破線は改ページ位置の目安）</p>
                 <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} preview />
               </div>
             ) : null}

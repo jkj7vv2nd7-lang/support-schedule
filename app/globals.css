@@ -48,3 +48,24 @@ body {
   size: A4 landscape;
   margin: 10mm;
 }
+
+/* 画面の印刷プレビューは印刷時と同じ見た目にする（白背景・黒文字・太罫グリッド）。
+   print-grid の装飾は @media print 内にしかないため、プレビュー用に同等物を画面側にも用意する。
+   ダークモードでもプレビュー内は紙と同じ白・黒で出す。 */
+.print-preview {
+  background: #ffffff !important;
+  color: #111111 !important;
+  color-scheme: light;
+}
+.print-preview h2, .print-preview h3, .print-preview td, .print-preview th { color: #111111 !important; }
+.print-preview .onepage-table { table-layout: fixed; width: 100%; font-size: 9px; line-height: 1.3; }
+.print-preview .onepage-table th, .print-preview .onepage-table td { padding: 2px 3px; overflow-wrap: break-word; word-break: break-all; }
+.print-preview .print-grid { table-layout: fixed; width: 100%; border: 3px solid #111; }
+.print-preview .print-grid th, .print-preview .print-grid td { border: 2px solid #333; overflow-wrap: break-word; background: #fff !important; }
+.print-preview .print-grid thead th { border-bottom: 3px solid #111; }
+.print-preview .print-grid th.sep-day, .print-preview .print-grid td.sep-day { border-left: 3px solid #111; }
+.print-preview .print-grid th.sep-day-r, .print-preview .print-grid td.sep-day-r { border-right: 3px solid #111; }
+.print-preview .print-grid tr.sep-day > th, .print-preview .print-grid tr.sep-day > td { border-top: 3px solid #111; }
+.print-preview .print-grid tr.sep-day-b > th, .print-preview .print-grid tr.sep-day-b > td { border-bottom: 3px solid #111; }
+/* プレビューでは改ページ位置を破線で可視化する（印刷時は break-after-page が効く） */
+.print-preview .break-after-page { border-bottom: 2px dashed #b0b0b0; padding-bottom: 1rem; margin-bottom: 1rem; }

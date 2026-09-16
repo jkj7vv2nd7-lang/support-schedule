@@ -42,10 +42,27 @@ export default function ClassesPage() {
   const [notice, setNotice] = useState("");
   const [table, setTable] = useState<SlotContent[][]>(() => emptyTimetable());
   const [busy, setBusy] = useState(false);
+  const [aiReady, setAiReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // AI取り込みの利用可否（GEMINI_API_KEY設定状態）を死活確認APIで取得
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/timetable")
+      .then((r) => r.json() as Promise<{ configured?: boolean }>)
+      .then((j) => {
+        if (alive) setAiReady(j.configured === true);
+      })
+      .catch(() => {
+        if (alive) setAiReady(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 保存完了メッセージは編集カードの外（一覧側）でも見えるよう、数秒で自動的に消す
   useEffect(() => {
@@ -247,6 +264,13 @@ export default function ClassesPage() {
               {busy ? "読込中…" : "時間割の写真から読む"}
             </Btn>
             {busy ? <span className="text-xs text-blue-700">AIが読み取っています…</span> : null}
+            {aiReady === true ? (
+              <span className="text-xs text-zinc-500">AI取り込み利用可</span>
+            ) : aiReady === false ? (
+              <span className="text-xs text-amber-700">
+                AI取り込み未設定（GEMINI_API_KEY未設定）。Vercel本番は Environment Variables、手入力でも登録できます
+              </span>
+            ) : null}
           </div>
           {error ? <div className="mt-3"><Notice tone="red">{error}</Notice></div> : null}
           {message ? <div className="mt-3"><Notice tone="blue">{message}</Notice></div> : null}

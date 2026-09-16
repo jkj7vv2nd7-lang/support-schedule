@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Btn } from "@/components/ui";
-import { exportBackup, importBackup } from "@/lib/storage";
+import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, exportBackup, importBackup, loadAides, loadClasses, loadStudents, loadWeeks } from "@/lib/storage";
+import { refreshStored } from "@/lib/store";
 
 // データの受け渡し（複数教員での共用・機種変更用）: 全データをJSONで保存・復元する
 export default function BackupButtons() {
@@ -46,6 +47,11 @@ export default function BackupButtons() {
         return;
       }
       const c = result.counts ?? { classes: 0, students: 0, aides: 0, weeks: 0 };
+      // 復元後は各画面のキャッシュを更新し、全画面に反映させる
+      refreshStored(K_CLASSES, loadClasses);
+      refreshStored(K_STUDENTS, loadStudents);
+      refreshStored(K_AIDES, loadAides);
+      refreshStored(K_WEEKS, loadWeeks);
       setMessage(
         `復元しました（クラス${c.classes}・児童${c.students}・介助員${c.aides}・週${c.weeks}）。現在の入力は上書きされました`,
       );

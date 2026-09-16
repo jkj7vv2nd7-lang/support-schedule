@@ -51,11 +51,17 @@ function sanitize(raw: unknown) {
   return table;
 }
 
+export async function GET() {
+  // APIキーの有無だけを返す死活確認用（キー本体は絶対に返さない）。
+  // Vercel本番で GEMINI_API_KEY が設定されているか画面から確認できる。
+  return Response.json({ ok: true, configured: !!process.env.GEMINI_API_KEY, model: MODEL });
+}
+
 export async function POST(request: Request) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     return Response.json(
-      { ok: false, error: "時間割の写真取り込みには GEMINI_API_KEY の設定が必要です（.env.local）。手入力でも登録できます。" },
+      { ok: false, error: "時間割の写真取り込みには GEMINI_API_KEY の設定が必要です（ローカルは .env.local、Vercel本番はダッシュボードの Environment Variables）。手入力でも登録できます。" },
       { status: 501 },
     );
   }
@@ -79,7 +85,7 @@ export async function POST(request: Request) {
   if (!image) {
     return Response.json({ ok: false, error: "画像を指定してください" }, { status: 400 });
   }
-  if (!image.type.startsWith("image/")) {
+  if (image.type && !image.type.startsWith("image/")) {
     return Response.json({ ok: false, error: "画像ファイルを指定してください" }, { status: 400 });
   }
   if (image.size > MAX_IMAGE_BYTES) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { POST } from "@/app/api/export/route";
-import { extractTimetableJson } from "@/app/api/timetable/route";
+import { GET as timetableStatus, extractTimetableJson } from "@/app/api/timetable/route";
 import { emptyTimetable } from "@/lib/types";
 
 function payload(layouts: unknown) {
@@ -43,6 +43,25 @@ describe("export route layouts", () => {
     const res = await post({ sheets: false, overview: false, exchange: false, aides: false, classDaily: false, classOverview: false });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error?: string }).error ?? "").toContain("1つ以上");
+  });
+});
+
+describe("timetable status", () => {
+  it("設定状態をキー漏洩なく返す", async () => {
+    const prev = process.env.GEMINI_API_KEY;
+    try {
+      delete process.env.GEMINI_API_KEY;
+      const res1 = await timetableStatus();
+      expect(((await res1.json()) as { configured?: boolean }).configured).toBe(false);
+      process.env.GEMINI_API_KEY = "dummy-key-for-test";
+      const res2 = await timetableStatus();
+      const json2 = (await res2.json()) as Record<string, unknown>;
+      expect(json2.configured).toBe(true);
+      expect(JSON.stringify(json2)).not.toContain("dummy-key-for-test");
+    } finally {
+      if (prev === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = prev;
+    }
   });
 });
 
