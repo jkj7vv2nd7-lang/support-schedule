@@ -13,7 +13,7 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, formatWeek, mondayOf, sortClasses } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, formatWeek, mondayOf, sanitizePosts, sortClasses } from "@/lib/schedule";
 import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
@@ -79,13 +79,16 @@ export default function WeeksPage() {
     }
     const now = Date.now();
     let cells: WeekPlan["cells"];
+    let posts: WeekPlan["posts"] = [];
     if (copyFrom) {
       const src = weeks.find((w) => w.id === copyFrom);
       cells = src ? JSON.parse(JSON.stringify(src.cells)) : buildWeekCells(students, classes);
+      // 担当表は引き継ぐ（消えた児童・介助員・クラスは落とす）。欠席・行事メモは新週のため引き継がない
+      posts = src ? sanitizePosts(src.posts, students, aides, classes) : [];
     } else {
       cells = buildWeekCells(students, classes);
     }
-    const week: WeekPlan = { id: makeId(), weekStart: monday, cells, createdAt: now, updatedAt: now };
+    const week: WeekPlan = { id: makeId(), weekStart: monday, cells, posts, createdAt: now, updatedAt: now };
     persist([week, ...weeks]);
     setOpenId(week.id);
     setActiveStudent(students[0]?.id ?? "");
@@ -474,7 +477,23 @@ export default function WeeksPage() {
                       <Field label="場所">
                         <Select
                           value={selCell.place}
-                          onChange={(e) => updateCell(open.id, sel.sid, sel.key, { place: e.target.value as CellPlan["place"] })}
+                          onChange={(e) => {
+                            const place = e.target.value as CellPlan["place"];
+                            const patch: Partial<CellPlan> = { place };
+                            // 交流に切り替えたとき教科が空なら、交流先の時間割から自動引用する
+                            if (place === "exchange" && !selCell.subject) {
+                              const st = studentById.get(sel.sid);
+                              const cls = classes.find((c) => c.id === (selCell.classId ?? st?.exchangeClassId));
+                              const [d, p] = sel.key.split("-").map(Number);
+                              const slot = cls?.timetable[d]?.[p - 1];
+                              if (slot?.subject) {
+                                patch.subject = slot.subject;
+                                patch.content = slot.content ?? "";
+                                if (cls) patch.classId = cls.id;
+                              }
+                            }
+                            updateCell(open.id, sel.sid, sel.key, patch);
+                          }}
                         >
                           <option value="support">支援学級</option>
                           <option value="exchange">交流クラス</option>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf } from "@/lib/schedule";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf, sanitizePosts } from "@/lib/schedule";
 import { exportBackup, importBackup, validateDismissal } from "@/lib/storage";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
@@ -268,5 +268,23 @@ describe("countAideSlots", () => {
     expect(countAideSlots(cells, "a2")).toBe(1);
     expect(countAideSlots(cells, "ax")).toBe(0);
     expect(countAideSlots({}, "a1")).toBe(0);
+  });
+});
+
+describe("sanitizePosts", () => {
+  it("消えた参照を落とし空担当を除く", () => {
+    const aides = [aide("a1"), aide("a2")];
+    const students = [student()];
+    const classes = [cls()];
+    const posts = [
+      { aideId: "a1", studentIds: ["s1", "gone"], classIds: ["c1", "gone"] },
+      { aideId: "gone", studentIds: ["s1"], classIds: [] },
+      { aideId: "a2", studentIds: [], classIds: [] },
+    ];
+    expect(sanitizePosts(posts, students, aides, classes)).toEqual([
+      { aideId: "a1", studentIds: ["s1"], classIds: ["c1"] },
+    ]);
+    expect(sanitizePosts(undefined, students, aides, classes)).toEqual([]);
+    expect(sanitizePosts("x" as unknown as [], students, aides, classes)).toEqual([]);
   });
 });

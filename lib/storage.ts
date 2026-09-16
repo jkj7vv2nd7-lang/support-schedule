@@ -1,3 +1,4 @@
+import { sanitizePosts } from "@/lib/schedule";
 import { emptyTimetable } from "@/lib/types";
 import type { Aide, ExchangeClass, Student, WeekPlan } from "@/lib/types";
 
@@ -161,7 +162,7 @@ export function importBackup(data: unknown): { ok: boolean; counts?: { classes: 
   const classes = (o.classes as unknown[]).filter(isValidClass).map(normalizeClass);
   const students = (o.students as unknown[]).filter(isValidStudent);
   const aides = (o.aides as unknown[]).filter(isValidAide);
-  const weeks = (o.weeks as unknown[]).filter(isValidWeek);
+  const weeks = (o.weeks as unknown[]).filter(isValidWeek).map((w) => ({ ...w, posts: sanitizePosts(w.posts, students, aides, classes) }));
   if (classes.length + students.length + aides.length + weeks.length === 0) {
     return { ok: false, error: "有効なデータがありませんでした" };
   }

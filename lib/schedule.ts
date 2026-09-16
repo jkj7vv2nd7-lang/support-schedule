@@ -172,6 +172,29 @@ export function aideName(aides: Aide[], id: string | null): string {
   return aides.find((a) => a.id === id)?.name ?? "";
 }
 
+// 担当表の参照整理（コピー・復元時に消えた児童・介助員・クラスを落とす）
+export function sanitizePosts(
+  posts: WeekAidePost[] | undefined,
+  students: Student[],
+  aides: Aide[],
+  classes: ExchangeClass[],
+): WeekAidePost[] {
+  if (!Array.isArray(posts)) return [];
+  const sids = new Set(students.map((s) => s.id));
+  const aids = new Set(aides.map((a) => a.id));
+  const cids = new Set(classes.map((c) => c.id));
+  const out: WeekAidePost[] = [];
+  for (const p of posts) {
+    if (!p || typeof p !== "object" || !aids.has((p as WeekAidePost).aideId)) continue;
+    const post = p as WeekAidePost;
+    const studentIds = (post.studentIds ?? []).filter((id) => typeof id === "string" && sids.has(id));
+    const classIds = (post.classIds ?? []).filter((id) => typeof id === "string" && cids.has(id));
+    if (studentIds.length === 0 && classIds.length === 0) continue;
+    out.push({ aideId: post.aideId, studentIds, classIds });
+  }
+  return out;
+}
+
 // 介助員の週間担当コマ数を数える（負荷の見える化用）
 export function countAideSlots(cells: Record<string, Record<string, CellPlan>>, aideId: string): number {
   let n = 0;
