@@ -1,4 +1,4 @@
-import { boundRequestBody, bodyTooLargeMessage, checkContentLength, isBodyTooLarge } from "@/lib/api-guard";
+import { boundRequestBody, bodyTooLargeMessage, checkContentLength, checkRateLimit, clientIp, isBodyTooLarge, rateLimitExceededMessage } from "@/lib/api-guard";
 import { emptyTimetable } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -74,6 +74,11 @@ export async function POST(request: Request) {
   const tooLarge = checkContentLength(request, MAX_BODY_BYTES);
   if (tooLarge) {
     return Response.json({ ok: false, error: tooLarge }, { status: 413 });
+  }
+  // 画像理解APIの課金を守るため、同一IPの短時間連打を抑止する
+  const rl = checkRateLimit(`timetable:${clientIp(request)}`, 20, 10 * 60 * 1000);
+  if (!rl.ok) {
+    return Response.json({ ok: false, error: rateLimitExceededMessage(rl.retryAfterSec) }, { status: 429, headers: { "retry-after": String(rl.retryAfterSec ?? 60) } });
   }
   let image: File | null = null;
   try {

@@ -3,7 +3,7 @@ import { blankCell, isValidCell, isValidSlot, slotKey, DAYS, PERIODS, type Aide,
 // 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）。
 // refreshExchange を付けると「交流内容を再反映」になる：交流セルの教科・内容・交流先を
 // 時間割から上書きする（担当の先生・介助員・場所は保持）。手入力のある支援セルは温存し、
-// 空の支援セルは交流セルに起こす。
+// 空の支援セルは交流セルに起こす。交流から外れたコマの空の交流セルは支援に戻す（取り残し整理）。
 export function buildWeekCells(
   students: Student[],
   classes: ExchangeClass[],
@@ -65,6 +65,11 @@ export function buildWeekCells(
           continue;
         }
         if (kept) {
+          // 交流から外れたコマ：手入力のあるセルは温存し、空の交流セルは支援に戻す
+          if (kept.place === "exchange" && !kept.subject && !kept.content && !kept.teacher && !kept.aideId) {
+            cur[key] = blankCell("support");
+            continue;
+          }
           cur[key] = kept;
           continue;
         }

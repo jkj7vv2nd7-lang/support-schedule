@@ -290,6 +290,8 @@ export type BackupData = {
   students: Student[];
   aides: Aide[];
   weeks: WeekPlan[];
+  // 学校名などの設定（旧バックアップには無いため復元時は任意扱い）
+  settings?: Settings;
 };
 
 export function exportBackup(): BackupData {
@@ -301,6 +303,7 @@ export function exportBackup(): BackupData {
     students: loadStudents(),
     aides: loadAides(),
     weeks: loadWeeks(),
+    settings: loadSettings(),
   };
 }
 
@@ -319,7 +322,9 @@ export function importBackup(data: unknown): { ok: boolean; counts?: { classes: 
     return { ok: false, error: "有効なデータがありませんでした" };
   }
   // 保存の成否を確認する（一部だけ保存される不整合を防ぐ）
-  const saved = saveClasses(classes) && saveStudents(students) && saveAides(aides) && saveWeeks(weeks);
+  const saved =
+    saveClasses(classes) && saveStudents(students) && saveAides(aides) && saveWeeks(weeks) &&
+    saveSettings(normalizeSettings(o.settings));
   if (!saved) {
     return { ok: false, error: "保存に失敗しました（ブラウザの容量を確認してください）。データが一部だけ書き換わった可能性があります" };
   }

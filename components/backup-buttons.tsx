@@ -52,6 +52,8 @@ export default function BackupButtons() {
       refreshStored(K_STUDENTS, loadStudents);
       refreshStored(K_AIDES, loadAides);
       refreshStored(K_WEEKS, loadWeeks);
+      // 学校名設定の表示（ホーム）にも復元を反映させる
+      window.dispatchEvent(new CustomEvent("support-schedule:settings-changed"));
       setMessage(
         `復元しました（クラス${c.classes}・児童${c.students}・介助員${c.aides}・週${c.weeks}）。現在の入力は上書きされました`,
       );

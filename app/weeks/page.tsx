@@ -118,7 +118,7 @@ export default function WeeksPage() {
   }
 
   function refreshFromMaster(week: WeekPlan) {
-    if (!window.confirm("交流クラスの時間割を、交流セルの「教科・内容」に再反映します（担当の先生・介助員・支援学級のセルは保持されます）。よろしいですか？")) return;
+    if (!window.confirm("交流クラスの時間割を、交流セルの「教科・内容」に再反映します（担当の先生・介助員・手入力のセルは保持されます。交流から外れた空のコマは支援に戻ります）。よろしいですか？")) return;
     updateCells(week.id, (cells) => buildWeekCells(students, classes, cells, { refreshExchange: true }));
     setNotice("交流クラスの時間割を反映しました");
   }

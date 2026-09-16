@@ -1,7 +1,7 @@
 import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, normalizeLayouts, sanitizeFileName } from "@/lib/export";
 import { buildWeekCells } from "@/lib/schedule";
 import { isValidAide, isValidClass, isValidStudent, isValidWeek, isValidWeekStart, normalizeSettings } from "@/lib/storage";
-import { boundRequestBody, bodyTooLargeMessage, checkContentLength, isBodyTooLarge } from "@/lib/api-guard";
+import { boundRequestBody, bodyTooLargeMessage, checkContentLength, checkRateLimit, clientIp, isBodyTooLarge, rateLimitExceededMessage } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 
@@ -21,6 +21,11 @@ export async function POST(request: Request) {
   const tooLarge = checkContentLength(request, MAX_BODY_BYTES);
   if (tooLarge) {
     return Response.json({ ok: false, error: tooLarge }, { status: 413 });
+  }
+  // 重いファイル生成の前段で、同一IPの短時間連打を抑止する
+  const rl = checkRateLimit(`export:${clientIp(request)}`, 60, 10 * 60 * 1000);
+  if (!rl.ok) {
+    return Response.json({ ok: false, error: rateLimitExceededMessage(rl.retryAfterSec) }, { status: 429, headers: { "retry-after": String(rl.retryAfterSec ?? 60) } });
   }
   let body: unknown;
   try {

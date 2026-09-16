@@ -21,6 +21,46 @@ export class BodyTooLargeError extends Error {
   }
 }
 
+// 簡易レート制限（同一IPの短時間連打を抑止。サーバーレスの複数台では台ごとの計数になる点に注意）。
+// メモリ保持のため長期運用では古いバケットを掃除する。
+const buckets = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(key: string, limit: number, windowMs: number, now = Date.now()): { ok: boolean; retryAfterSec?: number } {
+  if (buckets.size > 2000) {
+    for (const [k, v] of buckets) {
+      if (now >= v.resetAt) buckets.delete(k);
+    }
+  }
+  const cur = buckets.get(key);
+  if (!cur || now >= cur.resetAt) {
+    buckets.set(key, { count: 1, resetAt: now + windowMs });
+    return { ok: true };
+  }
+  cur.count += 1;
+  if (cur.count > limit) {
+    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((cur.resetAt - now) / 1000)) };
+  }
+  return { ok: true };
+}
+
+export function rateLimitExceededMessage(retryAfterSec?: number): string {
+  return typeof retryAfterSec === "number" && retryAfterSec > 0
+    ? `リクエストが多すぎます。${retryAfterSec}秒ほど待って再試行してください`
+    : "リクエストが多すぎます。時間をおいて再試行してください";
+}
+
+// Vercel等では x-forwarded-for の先頭がクライアントIPになる
+export function clientIp(request: Request): string {
+  const fwd = request.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim().slice(0, 64) || "unknown";
+  return "unknown";
+}
+
+// テスト用のバケット掃除
+export function __clearRateLimits(): void {
+  buckets.clear();
+}
+
 // ストリーム制限の打ち切りは multipart/JSON パーサでラップされる場合があるため、
 // instanceof だけでなくエラー名でも判定する（413を400に化けさせない）
 export function isBodyTooLarge(err: unknown): err is BodyTooLargeError {

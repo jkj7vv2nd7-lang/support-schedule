@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Btn, TextInput } from "@/components/ui";
 import { loadSettings, saveSettings } from "@/lib/storage";
 
@@ -9,6 +9,16 @@ export default function SchoolSettings() {
   // localStorageはクライアントでのみ読む（SSR時は空文字）
   const [name, setName] = useState(() => loadSettings().schoolName);
   const [message, setMessage] = useState<string | null>(null);
+
+  // バックアップ復元で設定が上書きされたら表示を追随させる
+  useEffect(() => {
+    const sync = () => {
+      setName(loadSettings().schoolName);
+      setMessage(null);
+    };
+    window.addEventListener("support-schedule:settings-changed", sync);
+    return () => window.removeEventListener("support-schedule:settings-changed", sync);
+  }, []);
 
   function save() {
     if (!saveSettings({ schoolName: name })) {

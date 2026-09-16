@@ -107,6 +107,13 @@ export default function PeoplePage() {
   const [aName, setAName] = useState("");
   const [aOff, setAOff] = useState<ExchangeSlot[]>([]);
   const [editingAide, setEditingAide] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  // 別項目の編集開始・キャンセルで編集中の内容を捨てる前に確認する
+  function guardDirty(): boolean {
+    if (!dirty) return true;
+    return window.confirm("編集中の内容が破棄されます。よろしいですか？");
+  }
 
   function persistStudents(next: Student[]) {
     if (!saveStudents(next)) {
@@ -119,6 +126,7 @@ export default function PeoplePage() {
   function removeStudent(st: Student) {
     if (!window.confirm(`${st.name}を削除しますか？`)) return;
     persistStudents(students.filter((x) => x.id !== st.id));
+    if (editingStudent === st.id) resetStudentForm();
     const detached = detachStudentFromWeeks(loadWeeks(), st.id);
     if (detached.changed) {
       saveWeeks(detached.weeks);
@@ -130,6 +138,7 @@ export default function PeoplePage() {
   function removeAide(a: Aide) {
     if (!window.confirm(`${a.name}を削除しますか？`)) return;
     persistAides(aides.filter((x) => x.id !== a.id));
+    if (editingAide === a.id) resetAideForm();
     const detached = detachAideFromWeeks(loadWeeks(), a.id);
     if (detached.changed) {
       saveWeeks(detached.weeks);
@@ -152,14 +161,17 @@ export default function PeoplePage() {
     setSClassId("");
     setSSlots([]);
     setSNotes("");
+    setDirty(false);
   }
 
   function editStudent(st: Student) {
+    if (!guardDirty()) return;
     setEditingStudent(st.id);
     setSName(st.name);
     setSClassId(st.exchangeClassId ?? "");
     setSSlots(st.exchangeSlots);
     setSNotes(st.notes ?? "");
+    setDirty(false);
   }
 
   function saveStudent() {
@@ -194,6 +206,15 @@ export default function PeoplePage() {
     setEditingAide(null);
     setAName("");
     setAOff([]);
+    setDirty(false);
+  }
+
+  function editAide(a: Aide) {
+    if (!guardDirty()) return;
+    setEditingAide(a.id);
+    setAName(a.name);
+    setAOff(a.offSlots);
+    setDirty(false);
   }
 
   function saveAide() {
@@ -233,10 +254,10 @@ export default function PeoplePage() {
         <StepHeading step="児">支援児童</StepHeading>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label="児童名">
-            <TextInput value={sName} onChange={(e) => setSName(e.target.value)} placeholder="例：山田 太郎" />
+            <TextInput value={sName} onChange={(e) => { setSName(e.target.value); setDirty(true); }} placeholder="例：山田 太郎" />
           </Field>
           <Field label="交流クラス">
-            <Select value={sClassId} onChange={(e) => { setSClassId(e.target.value); setSSlots([]); }}>
+            <Select value={sClassId} onChange={(e) => { setSClassId(e.target.value); setSSlots([]); setDirty(true); }}>
               <option value="">交流なし（支援学級のみ）</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -249,7 +270,7 @@ export default function PeoplePage() {
         {sClassId ? (
           <div className="mt-3">
             <p className="mb-1.5 text-sm font-medium text-zinc-700">交流に行くコマ（タップで切替）</p>
-            <SlotGrid selected={sSlots} onToggle={(d, p) => setSSlots((prev) => toggleSlot(prev, d, p))} hint={hintFor} />
+            <SlotGrid selected={sSlots} onToggle={(d, p) => { setSSlots((prev) => toggleSlot(prev, d, p)); setDirty(true); }} hint={hintFor} />
           </div>
         ) : null}
         <div className="mt-3">
@@ -259,7 +280,7 @@ export default function PeoplePage() {
             </span>
             <textarea
               value={sNotes}
-              onChange={(e) => setSNotes(e.target.value)}
+              onChange={(e) => { setSNotes(e.target.value); setDirty(true); }}
               rows={2}
               placeholder="例：ナッツアレルギーあり。初めての場所では緊張するため声かけを"
               className="min-h-[56px] w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed placeholder:text-zinc-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
@@ -268,7 +289,7 @@ export default function PeoplePage() {
         </div>
         <div className="mt-3 flex gap-2">
           <Btn onClick={saveStudent}>{editingStudent ? "更新する" : "登録する"}</Btn>
-          {editingStudent ? <Btn variant="secondary" onClick={resetStudentForm}>キャンセル</Btn> : null}
+          {editingStudent ? <Btn variant="secondary" onClick={() => { if (guardDirty()) resetStudentForm(); }}>キャンセル</Btn> : null}
         </div>
         <ul className="mt-4 space-y-2">
           {students.map((st) => {
@@ -301,16 +322,16 @@ export default function PeoplePage() {
         <StepHeading step="介">介助員</StepHeading>
         <div className="mt-4">
           <Field label="介助員名">
-            <TextInput value={aName} onChange={(e) => setAName(e.target.value)} placeholder="例：佐藤 先生" />
+            <TextInput value={aName} onChange={(e) => { setAName(e.target.value); setDirty(true); }} placeholder="例：佐藤 先生" />
           </Field>
           <div className="mt-3">
             <p className="mb-1.5 text-sm font-medium text-zinc-700">勤務不可コマ（タップで切替）</p>
-            <SlotGrid selected={aOff} onToggle={(d, p) => setAOff((prev) => toggleSlot(prev, d, p))} />
+            <SlotGrid selected={aOff} onToggle={(d, p) => { setAOff((prev) => toggleSlot(prev, d, p)); setDirty(true); }} />
           </div>
         </div>
         <div className="mt-3 flex gap-2">
           <Btn onClick={saveAide}>{editingAide ? "更新する" : "登録する"}</Btn>
-          {editingAide ? <Btn variant="secondary" onClick={resetAideForm}>キャンセル</Btn> : null}
+          {editingAide ? <Btn variant="secondary" onClick={() => { if (guardDirty()) resetAideForm(); }}>キャンセル</Btn> : null}
         </div>
         <ul className="mt-4 space-y-2">
           {aides.map((a) => (
@@ -320,17 +341,13 @@ export default function PeoplePage() {
                 <span className="ml-2 text-xs text-zinc-500">不可{a.offSlots.length}コマ</span>
               </div>
               <div className="flex gap-2">
-                <Btn
-                  variant="secondary"
-                  className="px-3 py-1.5 text-xs"
-                  onClick={() => {
-                    setEditingAide(a.id);
-                    setAName(a.name);
-                    setAOff(a.offSlots);
-                  }}
-                >
-                  編集
-                </Btn>
+                  <Btn
+                    variant="secondary"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={() => editAide(a)}
+                  >
+                    編集
+                  </Btn>
                 <Btn
                   variant="danger"
                   className="px-3 py-1.5 text-xs"

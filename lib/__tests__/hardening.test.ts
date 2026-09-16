@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { POST as exportPost } from "@/app/api/export/route";
-import { isBodyTooLarge } from "@/lib/api-guard";
+import { __clearRateLimits, checkRateLimit, clientIp, isBodyTooLarge } from "@/lib/api-guard";
 import { buildSampleData } from "@/lib/sample";
 import { applyRoster, autoAssignAides, buildWeekCells, dropGhostAides, exportTitle } from "@/lib/schedule";
 import {
@@ -151,6 +151,18 @@ describe("buildWeekCells refreshExchange", () => {
     expect(cells.s1["0-2"]).toMatchObject({ place: "support", subject: "自習" });
     expect(cells.s1["0-3"]).toMatchObject({ place: "exchange", subject: "音楽" });
   });
+
+  it("交流から外れた空の交流セルは支援に戻し、手入力は残す", () => {
+    const stale: Record<string, Record<string, CellPlan>> = {
+      s1: {
+        "0-4": { place: "exchange", subject: "", content: "", teacher: "", aideId: null, classId: "c1" },
+        "0-5": { place: "exchange", subject: "国語", content: "", teacher: "田中", aideId: null, classId: "c1" },
+      },
+    };
+    const cells = buildWeekCells(students, classes, stale, { refreshExchange: true });
+    expect(cells.s1["0-4"]).toMatchObject({ place: "support", subject: "" });
+    expect(cells.s1["0-5"]).toMatchObject({ place: "exchange", subject: "国語" });
+  });
 });
 
 describe("dropGhostAides", () => {
@@ -218,13 +230,51 @@ describe("normalizeTimetable", () => {
     expect(normalizeTimetable(null)[2][3]).toEqual({ subject: "", content: "" });
   });
 });
-
 describe("isBodyTooLarge", () => {
   it("ラップされたエラーでも413判定できる", async () => {
     const { BodyTooLargeError } = await import("@/lib/api-guard");
     expect(isBodyTooLarge(new BodyTooLargeError(10))).toBe(true);
     expect(isBodyTooLarge({ name: "BodyTooLargeError", cause: { name: "BodyTooLargeError" } })).toBe(true);
     expect(isBodyTooLarge(new Error("nope"))).toBe(false);
+  });
+});
+
+describe("rate limit", () => {
+  it("上限超過で429判定し、期間経過で回復する", () => {
+    __clearRateLimits();
+    const key = `test-${Date.now()}`;
+    expect(checkRateLimit(key, 2, 60_000).ok).toBe(true);
+    expect(checkRateLimit(key, 2, 60_000).ok).toBe(true);
+    const third = checkRateLimit(key, 2, 60_000);
+    expect(third.ok).toBe(false);
+    expect(third.retryAfterSec).toBeGreaterThan(0);
+    expect(checkRateLimit(key, 2, 60_000, Date.now() + 61_000).ok).toBe(true);
+    __clearRateLimits();
+  });
+
+  it("clientIpはx-forwarded-forの先頭を取る", () => {
+    const req = new Request("http://localhost/", { headers: { "x-forwarded-for": "203.0.113.1, 70.0.0.1" } });
+    expect(clientIp(req)).toBe("203.0.113.1");
+    expect(clientIp(new Request("http://localhost/"))).toBe("unknown");
+  });
+});
+
+describe("backup settings", () => {
+  it("設定つき・設定なしのどちらも復元できる", async () => {
+    const { importBackup } = await import("@/lib/storage");
+    const tt = emptyTimetable();
+    const base = {
+      app: "support-schedule",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      classes: [{ id: "c1", name: "3年2組", grade: "3年", timetable: tt, updatedAt: 1 }],
+      students: [],
+      aides: [],
+      weeks: [],
+    };
+    expect(importBackup({ ...base, settings: { schoolName: "さくら小" } }).ok).toBe(true);
+    expect(importBackup(base).ok).toBe(true);
+    expect(importBackup({ ...base, classes: [] }).ok).toBe(false);
   });
 });
 
