@@ -1,7 +1,7 @@
 import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, normalizeLayouts, sanitizeFileName } from "@/lib/export";
 import { buildWeekCells } from "@/lib/schedule";
-import { isValidAide, isValidClass, isValidStudent, isValidWeek, isValidWeekStart, normalizeSettings } from "@/lib/storage";
-import { boundRequestBody, bodyTooLargeMessage, checkContentLength, checkRateLimit, clientIp, isBodyTooLarge, rateLimitExceededMessage } from "@/lib/api-guard";
+import { isValidAide, isValidClass, isValidStudent, isValidWeek } from "@/lib/storage";
+import { BodyTooLargeError, boundRequestBody, bodyTooLargeMessage, checkContentLength } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 
@@ -22,16 +22,11 @@ export async function POST(request: Request) {
   if (tooLarge) {
     return Response.json({ ok: false, error: tooLarge }, { status: 413 });
   }
-  // 重いファイル生成の前段で、同一IPの短時間連打を抑止する
-  const rl = checkRateLimit(`export:${clientIp(request)}`, 60, 10 * 60 * 1000);
-  if (!rl.ok) {
-    return Response.json({ ok: false, error: rateLimitExceededMessage(rl.retryAfterSec) }, { status: 429, headers: { "retry-after": String(rl.retryAfterSec ?? 60) } });
-  }
   let body: unknown;
   try {
     body = await boundRequestBody(request, MAX_BODY_BYTES).json();
   } catch (err) {
-    if (isBodyTooLarge(err)) {
+    if (err instanceof BodyTooLargeError) {
       return Response.json({ ok: false, error: bodyTooLargeMessage(err.maxBytes) }, { status: 413 });
     }
     return Response.json({ ok: false, error: "リクエストの形式が不正です" }, { status: 400 });
@@ -56,26 +51,15 @@ export async function POST(request: Request) {
   ) {
     return Response.json({ ok: false, error: "出力するデータの形式が正しくありません" }, { status: 400 });
   }
-  if (!isValidWeekStart(week.weekStart)) {
-    return Response.json({ ok: false, error: "週の日付が正しくありません（YYYY-MM-DD形式の月曜を指定してください）" }, { status: 400 });
-  }
 
   try {
     const layouts = normalizeLayouts(rawLayouts);
-    if (!layouts.sheets && !layouts.overview && !layouts.exchange && !layouts.aides && !layouts.classDaily && !layouts.classOverview) {
+    if (!layouts.sheets && !layouts.overview && !layouts.exchange && !layouts.aides) {
       return Response.json({ ok: false, error: "出力する表を1つ以上選んでください" }, { status: 400 });
-    }
-    // クラス×曜日一覧は列数=5N+1になるため、交流クラスが多いと判読不能・Wordの列上限に当たる
-    if (layouts.classOverview) {
-      const activeCount = new Set(students.map((s) => s.exchangeClassId).filter((v): v is string => typeof v === "string" && v.length > 0)).size;
-      if (activeCount > 10) {
-        return Response.json({ ok: false, error: "交流クラスが多いため「クラス×曜日 一覧」は出力できません（11クラス以上）。「クラス別(日ごと)」をご利用ください" }, { status: 400 });
-      }
     }
     // 登録後に追加された児童などのセル欠落を補完
     const fullCells = buildWeekCells(students, classes, week.cells);
-    const settings = normalizeSettings((d as { settings?: unknown }).settings);
-    const input = { week: { ...week, cells: fullCells }, students, aides, classes, settings };
+    const input = { week: { ...week, cells: fullCells }, students, aides, classes };
     const buffer =
       format === "pdf" ? await buildWeekPdf(input, layouts) : format === "xlsx" ? await buildWeekXlsx(input, layouts) : await buildWeekDocx(input, layouts);
     const base = sanitizeFileName(`週予定表${week.weekStart}`);

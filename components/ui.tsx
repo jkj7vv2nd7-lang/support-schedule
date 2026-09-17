@@ -59,8 +59,7 @@ export function Notice({ children, tone = "zinc" }: { children: ReactNode; tone?
     red: "border-red-200 bg-red-50 text-red-700",
     blue: "border-blue-200 bg-blue-50 text-blue-800",
   };
-  // エラーはスクリーンリーダーに即時通知する
-  return <div role={tone === "red" ? "alert" : undefined} className={`rounded-lg border px-3 py-2 text-sm ${tones[tone]}`}>{children}</div>;
+  return <div className={`rounded-lg border px-3 py-2 text-sm ${tones[tone]}`}>{children}</div>;
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

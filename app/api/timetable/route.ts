@@ -1,15 +1,11 @@
-import { boundRequestBody, bodyTooLargeMessage, checkContentLength, checkRateLimit, clientIp, isBodyTooLarge, rateLimitExceededMessage } from "@/lib/api-guard";
+import { BodyTooLargeError, boundRequestBody, bodyTooLargeMessage, checkContentLength } from "@/lib/api-guard";
 import { emptyTimetable } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
-// モデル名はURLに埋め込むためホワイトリストで検証する（不正値は既定にフォールバック）
-const MODEL = (() => {
-  const m = (process.env.GEMINI_TIMETABLE_MODEL || "").trim();
-  return /^[A-Za-z0-9_.-]+$/.test(m) ? m : "gemini-2.5-flash";
-})();
+const MODEL = process.env.GEMINI_TIMETABLE_MODEL || "gemini-2.5-flash";
 
 const SYSTEM = `写真は小学校・中学校の週時間割表です。表を読み取り、次のJSONだけを出力してください（コードフェンス・注釈禁止）。
 {"slots":[{"day":0,"period":1,"subject":"国語","content":"漢字ドリル"}]}
@@ -23,25 +19,10 @@ function stripFence(text: string): string {
   return text.replace(/```(?:json)?/gi, "").trim();
 }
 
-// モデルの応答からJSONを取り出す。余計な前置き・後書きが付いていても {…} の範囲を抜き出す
-export function extractTimetableJson(text: string): unknown {
-  const cleaned = stripFence(text);
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // ignore and try brace extraction
-  }
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("no-json");
-  return JSON.parse(cleaned.slice(start, end + 1));
-}
-
 function sanitize(raw: unknown) {
   const table = emptyTimetable();
   const list: unknown = (raw as { slots?: unknown } | null)?.slots ?? raw;
-  if (!Array.isArray(list)) return { table, count: 0 };
-  let count = 0;
+  if (!Array.isArray(list)) return table;
   for (const s of list.slice(0, 60)) {
     if (!s || typeof s !== "object") continue;
     const o = s as Record<string, unknown>;
@@ -52,33 +33,21 @@ function sanitize(raw: unknown) {
       subject: typeof o.subject === "string" ? o.subject.slice(0, 30) : "",
       content: typeof o.content === "string" ? o.content.slice(0, 100) : "",
     };
-    count += 1;
   }
-  return { table, count };
-}
-
-export async function GET() {
-  // APIキーの有無だけを返す死活確認用（キー本体は絶対に返さない）。
-  // Vercel本番で GEMINI_API_KEY が設定されているか画面から確認できる。
-  return Response.json({ ok: true, configured: !!process.env.GEMINI_API_KEY, model: MODEL });
+  return table;
 }
 
 export async function POST(request: Request) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     return Response.json(
-      { ok: false, error: "時間割の写真取り込みには GEMINI_API_KEY の設定が必要です（ローカルは .env.local、Vercel本番はダッシュボードの Environment Variables）。手入力でも登録できます。" },
+      { ok: false, error: "時間割の写真取り込みには GEMINI_API_KEY の設定が必要です（.env.local）。手入力でも登録できます。" },
       { status: 501 },
     );
   }
   const tooLarge = checkContentLength(request, MAX_BODY_BYTES);
   if (tooLarge) {
     return Response.json({ ok: false, error: tooLarge }, { status: 413 });
-  }
-  // 画像理解APIの課金を守るため、同一IPの短時間連打を抑止する
-  const rl = checkRateLimit(`timetable:${clientIp(request)}`, 20, 10 * 60 * 1000);
-  if (!rl.ok) {
-    return Response.json({ ok: false, error: rateLimitExceededMessage(rl.retryAfterSec) }, { status: 429, headers: { "retry-after": String(rl.retryAfterSec ?? 60) } });
   }
   let image: File | null = null;
   try {
@@ -88,7 +57,7 @@ export async function POST(request: Request) {
       image = v as File;
     }
   } catch (err) {
-    if (isBodyTooLarge(err)) {
+    if (err instanceof BodyTooLargeError) {
       return Response.json({ ok: false, error: bodyTooLargeMessage(err.maxBytes) }, { status: 413 });
     }
     return Response.json({ ok: false, error: "リクエストの形式が不正です" }, { status: 400 });
@@ -96,7 +65,7 @@ export async function POST(request: Request) {
   if (!image) {
     return Response.json({ ok: false, error: "画像を指定してください" }, { status: 400 });
   }
-  if (image.type && !image.type.startsWith("image/")) {
+  if (!image.type.startsWith("image/")) {
     return Response.json({ ok: false, error: "画像ファイルを指定してください" }, { status: 400 });
   }
   if (image.size > MAX_IMAGE_BYTES) {
@@ -120,14 +89,13 @@ export async function POST(request: Request) {
     let res: Response | null = null;
     let lastStatus = 0;
     let lastBody = "";
-    // サーバーレスの実行時間上限に収まるよう、試行は初回+1回・1試行25秒までとする
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, 1500 + Math.random() * 500));
+        await new Promise((r) => setTimeout(r, 1500 * 2 ** (attempt - 1) + Math.random() * 500));
       }
       res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(key)}`,
-        { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(25000) },
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`,
+        { method: "POST", headers: { "content-type": "application/json" }, body },
       );
       if (res.ok) break;
       lastStatus = res.status;
@@ -152,15 +120,13 @@ export async function POST(request: Request) {
       .join("");
     let parsed: unknown = null;
     try {
-      parsed = extractTimetableJson(text);
+      parsed = JSON.parse(stripFence(text));
     } catch {
       return Response.json({ ok: false, error: "時間割の読み取り結果を解析できませんでした。写真を明るく・正面から撮り直してください" }, { status: 502 });
     }
-    const { table, count } = sanitize(parsed);
-    // 有効なコマが0件のときは空の時間割と区別できるよう empty を付ける（呼び出し側で警告表示する）
-    return Response.json({ ok: true, timetable: table, empty: count === 0 });
+    return Response.json({ ok: true, timetable: sanitize(parsed) });
   } catch (err) {
-    const message = err instanceof Error ? "時間割の読み取りに失敗しました。時間をおいて再試行してください" : "時間割の読み取りに失敗しました";
+    const message = err instanceof Error ? err.message : "時間割の読み取りに失敗しました";
     return Response.json({ ok: false, error: message }, { status: 500 });
   }
 }

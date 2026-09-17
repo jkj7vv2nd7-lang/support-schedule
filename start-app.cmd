@@ -22,9 +22,9 @@ if not exist "node_modules" (
 )
 
 if not exist ".env.local" (
-  if exist ".env.local.example" (
-    echo [INFO] .env.local not found - copying from .env.local.example.
-    copy ".env.local.example" ".env.local" >nul
+  if exist ".env.example" (
+    echo [INFO] .env.local not found - copying from .env.example.
+    copy ".env.example" ".env.local" >nul
   )
 )
 

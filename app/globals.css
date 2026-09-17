@@ -27,50 +27,11 @@ body {
 
 @media print {
   .no-print { display: none !important; }
-  /* ダークモードでも紙は白・文字は黒で出す。背景グラフィックOFFでも帯が消えないよう色調整はexact */
-  body { background: #ffffff !important; color: #111111 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   section { box-shadow: none !important; border: none !important; }
-  /* 長い表は行単位で改ページし、表頭を各ページに繰り返す（table全体のavoidは溢れ・欠落の原因になるため付けない） */
-  table { break-inside: auto; }
-  thead { display: table-header-group; }
+  table { break-inside: avoid; }
   tr, th, td { break-inside: avoid; page-break-inside: avoid; }
-  /* 1枚表（クラス×曜日 一覧）: A4横に収まるよう詰めて表示 */
-  .onepage-table { table-layout: fixed; width: 100%; font-size: 9px; line-height: 1.3; }
-  .onepage-table th, .onepage-table td { padding: 2px 3px; overflow-wrap: break-word; word-break: break-all; }
-  /* 印刷表の区切り強調：均等幅＋太罫グリッド、曜日ブロックは四辺で囲む */
-  .print-grid { table-layout: fixed; border: 3px solid #111 !important; }
-  .print-grid th, .print-grid td { border: 2px solid #333 !important; overflow-wrap: break-word; }
-  .print-grid thead th { border-bottom: 3px solid #111 !important; }
-  .print-grid th.sep-day, .print-grid td.sep-day { border-left: 3px solid #111 !important; }
-  .print-grid th.sep-day-r, .print-grid td.sep-day-r { border-right: 3px solid #111 !important; }
-  .print-grid tr.sep-day > th, .print-grid tr.sep-day > td { border-top: 3px solid #111 !important; }
-  .print-grid tr.sep-day-b > th, .print-grid tr.sep-day-b > td { border-bottom: 3px solid #111 !important; }
-  /* 配慮メモは背景色に頼らず太枠で識別できるようにする（白黒印刷対応） */
-  .memo-box { border: 2px solid #111 !important; background: #ffffff !important; color: #111111 !important; }
 }
 @page {
   size: A4 landscape;
   margin: 10mm;
 }
-
-/* 画面の印刷プレビューは印刷時と同じ見た目にする（白背景・黒文字・太罫グリッド）。
-   print-grid の装飾は @media print 内にしかないため、プレビュー用に同等物を画面側にも用意する。
-   ダークモードでもプレビュー内は紙と同じ白・黒で出す。 */
-.print-preview {
-  background: #ffffff !important;
-  color: #111111 !important;
-  color-scheme: light;
-}
-.print-preview h2, .print-preview h3, .print-preview td, .print-preview th { color: #111111 !important; }
-.print-preview .onepage-table { table-layout: fixed; width: 100%; font-size: 9px; line-height: 1.3; }
-.print-preview .onepage-table th, .print-preview .onepage-table td { padding: 2px 3px; overflow-wrap: break-word; word-break: break-all; }
-.print-preview .print-grid { table-layout: fixed; width: 100%; border: 3px solid #111; }
-.print-preview .print-grid th, .print-preview .print-grid td { border: 2px solid #333; overflow-wrap: break-word; background: #fff !important; }
-.print-preview .print-grid thead th { border-bottom: 3px solid #111; }
-.print-preview .print-grid th.sep-day, .print-preview .print-grid td.sep-day { border-left: 3px solid #111; }
-.print-preview .print-grid th.sep-day-r, .print-preview .print-grid td.sep-day-r { border-right: 3px solid #111; }
-.print-preview .print-grid tr.sep-day > th, .print-preview .print-grid tr.sep-day > td { border-top: 3px solid #111; }
-.print-preview .print-grid tr.sep-day-b > th, .print-preview .print-grid tr.sep-day-b > td { border-bottom: 3px solid #111; }
-/* プレビューでは改ページ位置を破線で可視化する（印刷時は break-after-page が効く） */
-.print-preview .break-after-page { border-bottom: 2px dashed #b0b0b0; padding-bottom: 1rem; margin-bottom: 1rem; }
-.print-preview .memo-box { border: 2px solid #111; background: #fff !important; color: #111 !important; }

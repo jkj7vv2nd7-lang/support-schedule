@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks, mondayOf, sanitizePosts } from "@/lib/schedule";
-import { exportBackup, importBackup, validateDismissal } from "@/lib/storage";
+import { applyRoster, autoAssignAides, buildWeekCells, detachAideFromWeeks, detachClassFromStudents, detachStudentFromWeeks } from "@/lib/schedule";
 import { emptyTimetable, slotKey, type Aide, type ExchangeClass, type Student, type WeekPlan } from "@/lib/types";
 
 function cls(): ExchangeClass {
@@ -90,30 +89,6 @@ describe("applyRoster", () => {
     const out = applyRoster(cells, [student()], [null, { aideId: 1 }, { aideId: "a1", studentIds: "x" }] as unknown as []);
     expect(out.s1[slotKey(0, 1)].aideId).toBeNull();
   });
-
-  it("勤務不可コマには担当表でも入れない", () => {
-    const cells = buildWeekCells([student()], [cls()]);
-    const off = aide("a1", [{ day: 0, period: 1 }]);
-    const out = applyRoster(cells, [student()], [{ aideId: "a1", studentIds: ["s1"], classIds: [] }], undefined, [off]);
-    expect(out.s1[slotKey(0, 1)].aideId).toBeNull();
-    expect(out.s1[slotKey(0, 2)].aideId).toBe("a1");
-  });
-});
-
-describe("dates", () => {
-  it("mondayOfは週の月曜を返す", () => {
-    expect(mondayOf(new Date("2026-09-20T00:00:00"))).toBe("2026-09-14"); // 日曜
-    expect(mondayOf(new Date("2026-09-19T00:00:00"))).toBe("2026-09-14"); // 土曜
-    expect(mondayOf(new Date("2026-09-14T00:00:00"))).toBe("2026-09-14"); // 月曜
-    expect(mondayOf(new Date("2026-09-30T00:00:00"))).toBe("2026-09-28"); // 月またぎ
-    expect(mondayOf(new Date("2026-01-01T00:00:00"))).toBe("2025-12-29"); // 年またぎ
-  });
-
-  it("addDaysは月・年をまたげる", () => {
-    expect(addDays("2026-01-31", 1)).toBe("2026-02-01");
-    expect(addDays("2025-12-31", 1)).toBe("2026-01-01");
-    expect(addDays("2026-09-14", 4)).toBe("2026-09-18");
-  });
 });
 
 function weekWithRefs(): WeekPlan {
@@ -153,138 +128,5 @@ describe("detach", () => {
     expect(changed).toBe(true);
     expect(students[0].exchangeClassId).toBeNull();
     expect(students[0].exchangeSlots).toEqual([]);
-  });
-});
-
-function overviewWeek(): WeekPlan {
-  const cells = buildWeekCells([student()], [cls()]);
-  cells.s1[slotKey(0, 1)].teacher = "田中";
-  return {
-    id: "w1",
-    weekStart: "2026-09-14",
-    cells,
-    dayNotes: ["", "運動会予行", "", "", ""],
-    createdAt: 1,
-    updatedAt: 1,
-  };
-}
-
-describe("classOverviewTable", () => {
-  it("参考様式の行構成（日・曜日・予定・時限）になる", () => {
-    const t = classOverviewTable({ week: overviewWeek(), students: [student()], aides: [], classes: [{ ...cls(), morning: ["朝清掃", "", "", "", ""], notice: "水曜は掃除なし", dismissal: ["14:20", "", "", "", ""] }] });
-    expect(t.header[0]).toBe("時限");
-    expect(t.header[1]).toContain("3年2組");
-    const firsts = t.rows.map((r) => r[0]);
-    expect(firsts).toEqual(["日", "曜日", "予定", "朝活動", "1", "2", "3", "4", "5", "6", "連絡等", "下校時刻"]);
-    // 予定・朝活動・連絡等・下校時刻が反映される
-    expect(t.rows[2][1]).toBe("");
-    expect(t.rows[3][1]).toBe("朝清掃");
-    expect(t.rows.find((r) => r[0] === "連絡等")?.[1]).toBe("水曜は掃除なし");
-    expect(t.rows.find((r) => r[0] === "下校時刻")?.[1]).toBe("14:20");
-    // 担当が載る（教科＋担当）
-    expect(t.rows[4][1]).toContain("国語");
-    expect(t.rows[4][1]).toContain("田中");
-  });
-
-  it("空行（予定・朝活動など）は出さない", () => {
-    const w = overviewWeek();
-    w.dayNotes = undefined;
-    const t = classOverviewTable({ week: w, students: [student()], aides: [], classes: [cls()] });
-    const firsts = t.rows.map((r) => r[0]);
-    expect(firsts).toEqual(["日", "曜日", "1", "2", "3", "4", "5", "6"]);
-  });
-
-  it("交流のないクラスは列に出さない", () => {
-    const other: ExchangeClass = { id: "c2", name: "4年1組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 };
-    const t = classOverviewTable({ week: overviewWeek(), students: [student()], aides: [], classes: [cls(), other] });
-    expect(t.columns).toHaveLength(5);
-    expect(t.header).toHaveLength(6);
-  });
-
-  it("曜日ブロックの列位置が分かる", () => {
-    const c2: ExchangeClass = { id: "c2", name: "4年1組", grade: "4年", timetable: emptyTimetable(), updatedAt: 1 };
-    const s2: Student = { id: "s2", name: "佐藤", exchangeClassId: "c2", exchangeSlots: [] };
-    const t = classOverviewTable({ week: overviewWeek(), students: [student(), s2], aides: [], classes: [cls(), c2] });
-    // 2クラス×5曜日=10列。曜日ごとに開始列と終了列が分かる
-    expect(t.columns).toHaveLength(10);
-    const starts = t.columns.map((c, i) => (i > 0 && c.day !== t.columns[i - 1].day ? i + 1 : -1)).filter((i) => i > 0);
-    const ends = t.columns.map((c, i) => (i === t.columns.length - 1 || t.columns[i + 1].day !== c.day ? i + 1 : -1)).filter((i) => i > 0);
-    expect(starts).toEqual([3, 5, 7, 9]);
-    expect(ends).toEqual([2, 4, 6, 8, 10]);
-  });
-});
-
-describe("classDayTable", () => {
-  it("クラス表の構成と担当・空行省略・該当なしnull", () => {
-    const w = overviewWeek();
-    const t = classDayTable({ week: w, students: [student()], aides: [], classes: [{ ...cls(), notice: "連絡あり" }] }, "c1");
-    expect(t).not.toBeNull();
-    expect(t!.title).toContain("3年2組");
-    expect(t!.header).toHaveLength(6);
-    expect(t!.header[1]).toContain("月");
-    const firsts = t!.rows.map((r) => r[0]);
-    expect(firsts).toEqual(["予定", "1", "2", "3", "4", "5", "6", "連絡等"]);
-    expect(t!.rows[1][1]).toContain("国語");
-    expect(t!.rows[1][1]).toContain("田中");
-    expect(classDayTable({ week: w, students: [student()], aides: [], classes: [cls()] }, "c1")!.rows.map((r) => r[0])).toEqual(["予定", "1", "2", "3", "4", "5", "6"]);
-    expect(classDayTable({ week: w, students: [], aides: [], classes: [cls()] }, "c1")).toBeNull();
-    expect(classDayTable({ week: w, students: [student()], aides: [], classes: [] }, "c1")).toBeNull();
-    expect(classDayTable({ week: w, students: [student()], aides: [], classes: [cls()] }, "cx")).toBeNull();
-  });
-});
-
-describe("backup", () => {
-  it("形式違い・空データは拒否し、正常データは受け入れる", () => {
-    expect(importBackup({ app: "other" }).ok).toBe(false);
-    expect(importBackup(null).ok).toBe(false);
-    expect(importBackup({ app: "support-schedule", classes: [], students: [], aides: [], weeks: [] }).ok).toBe(false);
-    const good = importBackup({ app: "support-schedule", version: 1, exportedAt: "2026-09-14", classes: [cls()], students: [student()], aides: [], weeks: [] });
-    expect(good.ok).toBe(true);
-    expect(good.counts).toMatchObject({ classes: 1, students: 1, aides: 0, weeks: 0 });
-    const exported = exportBackup();
-    expect(exported.app).toBe("support-schedule");
-    expect(Array.isArray(exported.classes)).toBe(true);
-  });
-});
-
-describe("validateDismissal", () => {
-  it("空欄は可・時刻形式のみ許可", () => {
-    expect(validateDismissal([])).toEqual([]);
-    expect(validateDismissal(["14:20", "", "9:05", "", ""])).toEqual([]);
-    const errors = validateDismissal(["1420", "", "25:00", "", "14-20"]);
-    expect(errors).toHaveLength(3);
-    expect(errors[0]).toContain("月曜");
-    expect(validateDismissal(null)).toEqual([]);
-  });
-});
-
-describe("countAideSlots", () => {
-  it("介助員ごとの担当コマ数を数える", () => {
-    const cells = buildWeekCells([student()], [cls()]);
-    cells.s1[slotKey(0, 1)].aideId = "a1";
-    cells.s1[slotKey(0, 2)].aideId = "a1";
-    cells.s1[slotKey(1, 1)].aideId = "a2";
-    expect(countAideSlots(cells, "a1")).toBe(2);
-    expect(countAideSlots(cells, "a2")).toBe(1);
-    expect(countAideSlots(cells, "ax")).toBe(0);
-    expect(countAideSlots({}, "a1")).toBe(0);
-  });
-});
-
-describe("sanitizePosts", () => {
-  it("消えた参照を落とし空担当を除く", () => {
-    const aides = [aide("a1"), aide("a2")];
-    const students = [student()];
-    const classes = [cls()];
-    const posts = [
-      { aideId: "a1", studentIds: ["s1", "gone"], classIds: ["c1", "gone"] },
-      { aideId: "gone", studentIds: ["s1"], classIds: [] },
-      { aideId: "a2", studentIds: [], classIds: [] },
-    ];
-    expect(sanitizePosts(posts, students, aides, classes)).toEqual([
-      { aideId: "a1", studentIds: ["s1"], classIds: ["c1"] },
-    ]);
-    expect(sanitizePosts(undefined, students, aides, classes)).toEqual([]);
-    expect(sanitizePosts("x" as unknown as [], students, aides, classes)).toEqual([]);
   });
 });

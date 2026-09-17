@@ -13,8 +13,8 @@ import {
   type Student,
   type WeekPlan,
 } from "@/lib/types";
-import { addDays, applyRoster, autoAssignAides, buildWeekCells, classDayTable, classOverviewTable, countAideSlots, daySections, dropGhostAides, exportTitle, formatWeek, mondayOf, sanitizePosts, sortClasses } from "@/lib/schedule";
-import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadSettings, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
+import { addDays, applyRoster, autoAssignAides, buildWeekCells, daySections, formatWeek, mondayOf } from "@/lib/schedule";
+import { K_AIDES, K_CLASSES, K_STUDENTS, K_WEEKS, loadAides, loadClasses, loadStudents, loadWeeks, makeId, saveWeeks } from "@/lib/storage";
 import { refreshStored, useStored } from "@/lib/store";
 import ExportButtons from "@/components/export-buttons";
 
@@ -23,16 +23,10 @@ function todayMonday(): string {
 }
 
 export default function WeeksPage() {
-  const weeksRaw = useStored(K_WEEKS, loadWeeks);
-  const studentsRaw = useStored(K_STUDENTS, loadStudents);
-  const classesRaw = useStored(K_CLASSES, loadClasses);
-  const aidesRaw = useStored(K_AIDES, loadAides);
-  // SSR直後はundefinedのため「まだありません」と誤表示しない（読込中を出す）
-  const loading = weeksRaw === undefined || studentsRaw === undefined || classesRaw === undefined || aidesRaw === undefined;
-  const weeks = weeksRaw ?? [];
-  const students = studentsRaw ?? [];
-  const classes = classesRaw ?? [];
-  const aides = aidesRaw ?? [];
+  const weeks = useStored(K_WEEKS, loadWeeks) ?? [];
+  const students = useStored(K_STUDENTS, loadStudents) ?? [];
+  const classes = useStored(K_CLASSES, loadClasses) ?? [];
+  const aides = useStored(K_AIDES, loadAides) ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState(() => todayMonday());
   const [copyFrom, setCopyFrom] = useState("");
@@ -41,10 +35,9 @@ export default function WeeksPage() {
   const [sel, setSel] = useState<{ sid: string; key: string } | null>(null);
   const [layouts, setLayouts] = useState({ sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false });
   const layoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily || layouts.classOverview;
+  // 「クラス別(日ごと)」はPDF/Excel/Wordのみ対応（ブラウザ印刷ビューは未対応）なので、印刷ボタンの活性判定には含めない
+  const printLayoutsOn = layouts.sheets || layouts.overview || layouts.exchange || layouts.aides;
   const [notice, setNotice] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  // 学校名（印刷・出力の表題用。ホームで設定。localStorageはクライアントでのみ読む）
-  const [schoolName] = useState(() => loadSettings().schoolName);
 
   useEffect(() => {
     if (!notice) return;
@@ -78,53 +71,36 @@ export default function WeeksPage() {
       setError("週（月曜）の日付が正しくありません");
       return;
     }
-    // 月曜以外が選ばれても月曜に丸める（表は月〜金固定のため）
-    const monday = mondayOf(new Date(`${newDate}T00:00:00`));
-    if (weeks.some((w) => w.weekStart === monday)) {
-      setError("同じ週の予定が既にあります。作り直す場合は先に削除してください");
-      return;
-    }
     const now = Date.now();
     let cells: WeekPlan["cells"];
-    let posts: WeekPlan["posts"] = [];
     if (copyFrom) {
       const src = weeks.find((w) => w.id === copyFrom);
-      const copied = src ? (JSON.parse(JSON.stringify(src.cells)) as WeekPlan["cells"]) : undefined;
-      // 新規児童のセル補完・削除済み児童の幽霊セル除去（buildWeekCellsの出力は現行児童のみ）
-      // 削除済み介助員の幽霊参照も外す
-      const completed = dropGhostAides(buildWeekCells(students, classes, copied), aides);
-      cells = completed;
-      // 担当表は引き継ぐ（消えた児童・介助員・クラスは落とす）。欠席・行事メモは新週のため引き継がない
-      posts = src ? sanitizePosts(src.posts, students, aides, classes) : [];
+      cells = src ? JSON.parse(JSON.stringify(src.cells)) : buildWeekCells(students, classes);
     } else {
       cells = buildWeekCells(students, classes);
     }
-    const week: WeekPlan = { id: makeId(), weekStart: monday, cells, posts, createdAt: now, updatedAt: now };
+    const week: WeekPlan = { id: makeId(), weekStart: newDate, cells, createdAt: now, updatedAt: now };
     persist([week, ...weeks]);
     setOpenId(week.id);
     setActiveStudent(students[0]?.id ?? "");
     setSel(null);
-    if (monday !== newDate) setNotice(`${newDate}は月曜（${monday}）に丸めて作成しました`);
   }
 
   function updateCells(weekId: string, fn: (cells: WeekPlan["cells"]) => WeekPlan["cells"]) {
     persist(
       weeks.map((w) =>
-        w.id === weekId
-          ? { ...w, cells: dropGhostAides(fn(buildWeekCells(students, classes, w.cells)), aides), updatedAt: Date.now() }
-          : w,
+        w.id === weekId ? { ...w, cells: fn(buildWeekCells(students, classes, w.cells)), updatedAt: Date.now() } : w,
       ),
     );
   }
 
   function refreshFromMaster(week: WeekPlan) {
-    if (!window.confirm("交流クラスの時間割を、交流セルの「教科・内容」に再反映します（担当の先生・介助員・手入力のセルは保持されます。交流から外れた空のコマは支援に戻ります）。よろしいですか？")) return;
-    updateCells(week.id, (cells) => buildWeekCells(students, classes, cells, { refreshExchange: true }));
+    updateCells(week.id, (cells) => buildWeekCells(students, classes, cells));
     setNotice("交流クラスの時間割を反映しました");
   }
 
   function runAutoAssign(week: WeekPlan) {
-    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts, week.absent, aides), aides, week.absent));
+    updateCells(week.id, (cells) => autoAssignAides(applyRoster(cells, students, week.posts, week.absent), aides, week.absent));
     setNotice("介助員を自動割付しました");
   }
 
@@ -180,10 +156,7 @@ export default function WeeksPage() {
   function removeWeek(id: string) {
     if (!window.confirm("この週予定を削除しますか？")) return;
     persist(weeks.filter((w) => w.id !== id));
-    if (openId === id) {
-      setOpenId(null);
-      setSel(null);
-    }
+    if (openId === id) setOpenId(null);
   }
 
   // 今週だけの行事・予定メモ（曜日別）
@@ -231,9 +204,8 @@ export default function WeeksPage() {
         <StepHeading step="＋">新しい週予定</StepHeading>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
-            <label htmlFor="new-week-date" className="mb-1.5 block text-sm font-medium text-zinc-700">週（月曜）</label>
+            <label className="mb-1.5 block text-sm font-medium text-zinc-700">週（月曜）</label>
             <input
-              id="new-week-date"
               type="date"
               value={newDate}
               onChange={(e) => setNewDate(e.target.value)}
@@ -241,9 +213,8 @@ export default function WeeksPage() {
             />
           </div>
           <div>
-            <label htmlFor="copy-from-week" className="mb-1.5 block text-sm font-medium text-zinc-700">コピー元</label>
+            <label className="mb-1.5 block text-sm font-medium text-zinc-700">コピー元</label>
             <select
-              id="copy-from-week"
               value={copyFrom}
               onChange={(e) => setCopyFrom(e.target.value)}
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm"
@@ -260,9 +231,7 @@ export default function WeeksPage() {
         </div>
       </Card>
 
-      {loading ? (
-        <Card className="py-10 text-center text-sm text-zinc-500">読み込み中…</Card>
-      ) : weeks.length === 0 ? (
+      {weeks.length === 0 ? (
         <Card className="py-10 text-center text-sm text-zinc-500">まだ週予定がありません。</Card>
       ) : null}
 
@@ -294,50 +263,20 @@ export default function WeeksPage() {
                   <Btn variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => runAutoAssign(open)}>
                     介助員を自動割付
                   </Btn>
-                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => window.print()}>
+                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!printLayoutsOn} onClick={() => window.print()}>
                     印刷する
                   </Btn>
-                  <Btn variant="secondary" className="px-3 py-1.5 text-xs" disabled={!layoutsOn} onClick={() => setShowPreview((v) => !v)}>
-                    {showPreview ? "プレビューを閉じる" : "印刷プレビュー"}
-                  </Btn>
-                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} settings={{ schoolName }} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
+                  <ExportButtons week={open} students={students} aides={aides} classes={classes} layouts={layouts} layoutsOn={layoutsOn} onError={setError} onSuccess={(format) => setNotice(`${{ pdf: "PDF", xlsx: "Excel", docx: "Word" }[format]}をダウンロードしました`)} />
                 </div>
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3">
-                  <span className="text-xs font-bold text-zinc-600">出力する表（印刷・保存共通）：</span>
-                  {(
-                    [
-                      { key: "sheets", label: "児童別" },
-                      { key: "overview", label: "全体一覧" },
-                      { key: "exchange", label: "交流クラス別" },
-                      { key: "aides", label: "介助員別" },
-                      { key: "classDaily", label: "クラス別(日ごと)" },
-                      { key: "classOverview", label: "クラス×曜日 一覧(1枚)" },
-                    ] as const
-                  ).map((l) => (
-                    <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
-                      <input
-                        type="checkbox"
-                        checked={layouts[l.key]}
-                        onChange={() => toggleLayout(l.key)}
-                        className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
-                      />
-                      {l.label}
-                    </label>
-                  ))}
-                </div>
-                {layouts.classOverview ? (
-                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」は児童名なしでA4横1枚に収まります（印刷ボタン・PDF対応。参考様式の主表と同じ構成です）</p>
-                ) : null}
                 <div className="rounded-xl border border-zinc-200 bg-white p-3">
                   <p className="text-sm font-bold">今週の予定（曜日別・任意）</p>
                   <p className="mt-0.5 text-xs text-zinc-400">学校行事など、その週だけのメモです（毎週入力し直します）。</p>
                   <div className="mt-2 grid grid-cols-5 gap-1">
                     {DAYS.map((d, i) => (
                       <input
-                        key={`${open.id}-${i}`}
-                        // 確定待ち(onBlur)ではなく即時保存し、印刷・プレビュー直前の入力落ちを防ぐ
-                        value={open.dayNotes?.[i] ?? ""}
-                        onChange={(e) => setDayNote(open.id, i, e.target.value)}
+                        key={d}
+                        defaultValue={open.dayNotes?.[i] ?? ""}
+                        onBlur={(e) => setDayNote(open.id, i, e.target.value)}
                         placeholder={d}
                         aria-label={`今週の予定（${d}曜）`}
                         className="w-full rounded-lg border border-zinc-300 bg-white px-1 py-2 text-center text-xs focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
@@ -355,13 +294,9 @@ export default function WeeksPage() {
                   ) : null}
                   {aides.map((a) => {
                     const post = open.posts?.find((p) => p.aideId === a.id);
-                    const assigned = countAideSlots(open.cells, a.id);
                     return (
                       <div key={a.id} className="mt-2 border-t border-zinc-100 pt-2">
-                        <p className="text-xs font-bold">
-                          {a.name}
-                          <span className="ml-2 font-normal text-zinc-500">今週{assigned}コマ</span>
-                        </p>
+                        <p className="text-xs font-bold">{a.name}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className="text-xs text-zinc-400">児童：</span>
                           {students.map((s) => (
@@ -394,6 +329,35 @@ export default function WeeksPage() {
                     );
                   })}
                 </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs font-bold text-zinc-600">出力する表：</span>
+                  {(
+                    [
+                      { key: "sheets", label: "児童別" },
+                      { key: "overview", label: "全体一覧" },
+                      { key: "exchange", label: "交流クラス別" },
+                      { key: "aides", label: "介助員別" },
+                      { key: "classDaily", label: "クラス別(日ごと)" },
+                      { key: "classOverview", label: "クラス×曜日 一覧(1枚)" },
+                    ] as const
+                  ).map((l) => (
+                    <label key={l.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700">
+                      <input
+                        type="checkbox"
+                        checked={layouts[l.key]}
+                        onChange={() => toggleLayout(l.key)}
+                        className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-blue-600/20"
+                      />
+                      {l.label}
+                    </label>
+                  ))}
+                </div>
+                {layouts.classDaily ? (
+                  <p className="text-xs text-zinc-400">※「クラス別(日ごと)」はPDF・Excel・Wordの書き出しのみ対応です（画面の印刷ボタンには反映されません）</p>
+                ) : null}
+                {layouts.classOverview ? (
+                  <p className="text-xs text-zinc-400">※「クラス×曜日 一覧(1枚)」はPDF・Excel・Wordの書き出しのみ対応です（児童名は載らず、A4横1枚に収まるよう自動で文字が縮小されます）</p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {students.map((s) => (
                     <button
@@ -443,9 +407,9 @@ export default function WeeksPage() {
                     <table className="w-full min-w-[640px] border-collapse text-xs">
                       <thead>
                         <tr>
-                          <th scope="col" className="w-10 border border-zinc-200 bg-zinc-50 px-1 py-1">時限</th>
+                          <th className="w-10 border border-zinc-200 bg-zinc-50 px-1 py-1">時限</th>
                           {DAYS.map((d) => (
-                            <th scope="col" key={d} className="border border-zinc-200 bg-zinc-50 px-1 py-1">{d}</th>
+                            <th key={d} className="border border-zinc-200 bg-zinc-50 px-1 py-1">{d}</th>
                           ))}
                         </tr>
                       </thead>
@@ -499,23 +463,7 @@ export default function WeeksPage() {
                       <Field label="場所">
                         <Select
                           value={selCell.place}
-                          onChange={(e) => {
-                            const place = e.target.value as CellPlan["place"];
-                            const patch: Partial<CellPlan> = { place };
-                            // 交流に切り替えたとき教科が空なら、交流先の時間割から自動引用する
-                            if (place === "exchange" && !selCell.subject) {
-                              const st = studentById.get(sel.sid);
-                              const cls = classes.find((c) => c.id === (selCell.classId ?? st?.exchangeClassId));
-                              const [d, p] = sel.key.split("-").map(Number);
-                              const slot = cls?.timetable[d]?.[p - 1];
-                              if (slot?.subject) {
-                                patch.subject = slot.subject;
-                                patch.content = slot.content ?? "";
-                                if (cls) patch.classId = cls.id;
-                              }
-                            }
-                            updateCell(open.id, sel.sid, sel.key, patch);
-                          }}
+                          onChange={(e) => updateCell(open.id, sel.sid, sel.key, { place: e.target.value as CellPlan["place"] })}
                         >
                           <option value="support">支援学級</option>
                           <option value="exchange">交流クラス</option>
@@ -561,13 +509,7 @@ export default function WeeksPage() {
               </div>
             ) : null}
 
-            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} schoolName={schoolName} /> : null}
-            {isOpen && open && showPreview ? (
-              <div className="no-print print-preview mt-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-4">
-                <p className="mb-2 text-xs font-bold text-zinc-500">印刷プレビュー（A4横・白背景。破線は改ページ位置の目安）</p>
-                <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} schoolName={schoolName} preview />
-              </div>
-            ) : null}
+            {isOpen && open ? <WeekPrint weeks={[open]} students={students} aides={aides} classes={classes} layouts={layouts} /> : null}
           </Card>
         );
       })}
@@ -575,7 +517,7 @@ export default function WeeksPage() {
   );
 }
 
-export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean; classDaily?: boolean; classOverview?: boolean };
+export type PrintLayouts = { sheets: boolean; overview: boolean; exchange: boolean; aides: boolean };
 
 function WeekPrint({
   weeks,
@@ -583,84 +525,48 @@ function WeekPrint({
   aides,
   classes,
   layouts,
-  schoolName = "",
-  preview = false,
 }: {
   weeks: WeekPlan[];
   students: Student[];
   aides: Aide[];
   classes: ExchangeClass[];
   layouts: PrintLayouts;
-  schoolName?: string;
-  preview?: boolean;
 }) {
   const aideById = new Map(aides.map((a) => [a.id, a.name]));
-  const laterAfterSheets = (hasMoreSheets: boolean) => hasMoreSheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily;
+  const laterAfterSheets = (hasMoreSheets: boolean) => hasMoreSheets || layouts.overview || layouts.exchange;
   return (
-    <div className={preview ? "block" : "hidden print:block"}>
+    <div className="hidden print:block">
       {weeks.map((w) => {
         const sheetStudents = students.filter((s) => w.cells[s.id]);
-        const overview = layouts.classOverview ? classOverviewTable({ week: w, students, aides, classes }) : null;
-        const afterExchange = layouts.aides || layouts.classDaily;
         return (
           <div key={w.id}>
-            {overview && overview.columns.length > 0 ? (
-              <div className={layouts.sheets || layouts.overview || layouts.exchange || layouts.aides || layouts.classDaily ? "break-after-page" : undefined}>
-                <h2 className="text-lg font-bold">
-                  {exportTitle(w.weekStart, schoolName)}
-                </h2>
-                <h3 className="mt-2 text-sm font-bold">クラス×曜日 一覧</h3>
-                <table className="onepage-table print-grid mt-1 w-full border-collapse">
-                  <thead>
-                    <tr>
-                      {overview.header.map((h, hi) => (
-                        <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : `border px-1 py-1${hi > 1 && overview.columns[hi - 1].day !== overview.columns[hi - 2].day ? " sep-day" : ""}${hi > 0 && (hi - 1 === overview.columns.length - 1 || overview.columns[hi].day !== overview.columns[hi - 1].day) ? " sep-day-r" : ""}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overview.rows.map((row, ri) => (
-                      <tr key={ri}>
-                        {row.map((cell, ci) => (
-                          <td key={ci} className={ci === 0 ? "border px-1 py-1 text-center font-bold" : `border px-1 py-1 align-top${ci > 1 && overview.columns[ci - 1].day !== overview.columns[ci - 2].day ? " sep-day" : ""}${ci > 0 && (ci - 1 === overview.columns.length - 1 || overview.columns[ci].day !== overview.columns[ci - 1].day) ? " sep-day-r" : ""}`}>
-                            {cell.split("\n").map((line, li) => (
-                              <span key={li} className="block">{line || " "}</span>
-                            ))}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
             {layouts.sheets
               ? sheetStudents.map((s, si) => (
                   <div key={s.id} className={laterAfterSheets(si < sheetStudents.length - 1) ? "break-after-page" : undefined}>
-                {si === 0 && !overview ? (
+                {si === 0 ? (
                   <h2 className="text-lg font-bold">
-                    {exportTitle(w.weekStart, schoolName)}
+                    週予定表 {w.weekStart}（{formatWeek(w.weekStart)}）
                   </h2>
                 ) : null}
                 <h3 className="mt-4 text-sm font-bold">{s.name}</h3>
-                <table className="print-grid mt-1 w-full border-collapse text-xs">
+                <table className="mt-1 w-full border-collapse text-xs">
                   <thead>
                     <tr>
-                      <th scope="col" className="w-14 border px-1 py-1">曜日</th>
+                      <th className="w-14 border px-1 py-1">曜日</th>
                       {PERIODS.map((p) => (
-                        <th scope="col" key={p} className="border px-1 py-1">{p}時限</th>
+                        <th key={p} className="border px-1 py-1">{p}時限</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {DAYS.map((d, day) => (
-                      <tr key={d} className="sep-day sep-day-b">
-                        <th scope="row" className="border px-1 py-1 text-center font-bold">
+                      <tr key={d}>
+                        <td className="border px-1 py-1 text-center font-bold">
                           {d}
                           <span className="block text-[10px] font-normal text-zinc-500">
                             {addDays(w.weekStart, day).slice(5).replace("-", "/")}
                           </span>
-                        </th>
+                        </td>
                         {PERIODS.map((p) => {
                           const c = w.cells[s.id]?.[slotKey(day, p)];
                           const absent = isAbsent(w, s.id, day);
@@ -685,7 +591,7 @@ function WeekPrint({
                   </tbody>
                 </table>
                 {s.notes ? (
-                  <div className="memo-box mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed">
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed">
                     <span className="font-bold">〔配慮メモ・引き継ぎ〕</span>
                     <span className="whitespace-pre-wrap">{s.notes}</span>
                   </div>
@@ -694,15 +600,15 @@ function WeekPrint({
             ))
           : null}
           {layouts.overview ? (
-            <div className={layouts.exchange || layouts.aides || layouts.classDaily ? "break-after-page" : undefined}>
+            <div className={layouts.exchange ? "break-after-page" : undefined}>
             <h3 className="mt-6 text-sm font-bold">全体一覧（介助員）</h3>
-            <table className="print-grid mt-1 w-full border-collapse text-xs">
+            <table className="mt-1 w-full border-collapse text-xs">
               <thead>
                 <tr>
-                  <th scope="col" className="w-14 border px-1 py-1">曜日</th>
-                  <th scope="col" className="w-20 border px-1 py-1">児童</th>
+                  <th className="w-14 border px-1 py-1">曜日</th>
+                  <th className="w-20 border px-1 py-1">児童</th>
                   {PERIODS.map((p) => (
-                    <th scope="col" key={p} className="border px-1 py-1">{p}時限</th>
+                    <th key={p} className="border px-1 py-1">{p}時限</th>
                   ))}
                 </tr>
               </thead>
@@ -710,14 +616,14 @@ function WeekPrint({
                 {DAYS.flatMap((d, day) => {
                   const rows = students.filter((s) => w.cells[s.id]);
                   return rows.map((s, ri) => (
-                    <tr key={`${day}-${s.id}`} className={`${day > 0 && ri === 0 ? "sep-day" : ""}${ri === rows.length - 1 ? " sep-day-b" : ""}`}>
+                    <tr key={`${day}-${s.id}`}>
                       {ri === 0 ? (
-                        <th scope="row" rowSpan={rows.length} className="border px-1 py-1 text-center font-bold">
+                        <td rowSpan={rows.length} className="border px-1 py-1 text-center font-bold">
                           {d}
                           <span className="block text-[10px] font-normal text-zinc-500">
                             {addDays(w.weekStart, day).slice(5).replace("-", "/")}
                           </span>
-                        </th>
+                        </td>
                       ) : null}
                       <td className="border px-1 py-1 font-bold">{s.name}</td>
                       {PERIODS.map((p) => {
@@ -744,26 +650,25 @@ function WeekPrint({
           </div>
           ) : null}
           {layouts.exchange
-            ? daySections({ week: w, students, aides, classes }).map((sec, si, arr) => (
-                <div key={si} className={si < arr.length - 1 || afterExchange ? "break-after-page" : undefined}>
+            ? daySections({ week: w, students, aides, classes }).map((sec, si) => (
+                <div key={si} className={si < 5 ? "break-after-page" : undefined}>
                   <h3 className="mt-6 text-sm font-bold">交流クラス別一覧</h3>
                   <p className="mt-1 text-sm font-bold">{sec.weekday}（{sec.date}）</p>
-                  <table className="print-grid mt-1 w-full border-collapse text-xs">
+                  <table className="mt-1 w-full border-collapse text-xs">
                     <thead>
                       <tr>
                         {["クラス", ...PERIODS.map((p) => `${p}時限`)].map((h, hi) => (
-                          <th scope="col" key={hi} className="border px-1 py-1">{h}</th>
+                          <th key={hi} className="border px-1 py-1">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {sec.rows.map((row, ri) => (
                         <tr key={ri}>
-                          <th scope="row" className="border px-1 py-1 align-top font-bold">{row.label}</th>
-                          {row.cells.map((cell, ci) => (
+                          {["クラス", ...row.cells].map((cell, ci) => (
                             <td key={ci} className="border px-1 py-1 align-top">
                               {cell.split("\n").map((line, li) => (
-                                <span key={li} className="block">{line || " "}</span>
+                                <span key={li} className="block">{line || " "}</span>
                               ))}
                             </td>
                           ))}
@@ -776,28 +681,28 @@ function WeekPrint({
             : null}
           {layouts.aides
             ? aides.map((a, ai) => {
-                const moreAfter = aides.slice(ai + 1).length > 0 || layouts.classDaily;
+                const moreAfter = aides.slice(ai + 1).length > 0;
                 return (
                   <div key={a.id} className={moreAfter ? "break-after-page" : undefined}>
                     <h3 className="mt-6 text-sm font-bold">{a.name}（介助）</h3>
-                    <table className="print-grid mt-1 w-full border-collapse text-xs">
+                    <table className="mt-1 w-full border-collapse text-xs">
                       <thead>
                         <tr>
-                          <th scope="col" className="w-14 border px-1 py-1">曜日</th>
+                          <th className="w-14 border px-1 py-1">曜日</th>
                           {PERIODS.map((p) => (
-                            <th scope="col" key={p} className="border px-1 py-1">{p}時限</th>
+                            <th key={p} className="border px-1 py-1">{p}時限</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {DAYS.map((d, day) => (
-                          <tr key={d} className="sep-day sep-day-b">
-                            <th scope="row" className="border px-1 py-1 text-center font-bold">
+                          <tr key={d}>
+                            <td className="border px-1 py-1 text-center font-bold">
                               {d}
                               <span className="block text-[10px] font-normal text-zinc-500">
                                 {addDays(w.weekStart, day).slice(5).replace("-", "/")}
                               </span>
-                            </th>
+                            </td>
                             {PERIODS.map((p) => {
                               const key = slotKey(day, p);
                               const assigned = students.filter((s) => w.cells[s.id]?.[key]?.aideId === a.id && !isAbsent(w, s.id, day));
@@ -827,38 +732,6 @@ function WeekPrint({
                   </div>
                 );
               })
-            : null}
-          {layouts.classDaily
-            ? sortClasses(classes)
-                .map((c) => ({ c, sheet: classDayTable({ week: w, students, aides, classes }, c.id) }))
-                .filter((x): x is { c: (typeof classes)[number]; sheet: NonNullable<ReturnType<typeof classDayTable>> } => x.sheet !== null)
-                .map(({ c, sheet }, ti, tables) => (
-                  <div key={c.id} className={ti < tables.length - 1 ? "break-after-page" : undefined}>
-                    <h3 className="mt-6 text-sm font-bold">{sheet.title}</h3>
-                    <table className="print-grid mt-1 w-full border-collapse text-xs">
-                      <thead>
-                        <tr>
-                          {sheet.header.map((h, hi) => (
-                            <th key={hi} className={hi === 0 ? "w-10 border px-1 py-1" : "border px-1 py-1 sep-day sep-day-r"}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sheet.rows.map((row, ri) => (
-                          <tr key={ri}>
-                            {row.map((cell, cci) => (
-                              <td key={cci} className={cci === 0 ? "border px-1 py-1 text-center font-bold" : "border px-1 py-1 align-top sep-day sep-day-r"}>
-                                {cell.split("\n").map((line, li) => (
-                                  <span key={li} className="block">{line || " "}</span>
-                                ))}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))
             : null}
         </div>
       );

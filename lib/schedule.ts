@@ -1,99 +1,41 @@
-import { blankCell, isValidCell, isValidSlot, slotKey, DAYS, PERIODS, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost, type WeekPlan } from "@/lib/types";
+import { blankCell, slotKey, DAYS, PERIODS, type Aide, type CellPlan, type ExchangeClass, type Student, type WeekAidePost, type WeekPlan } from "@/lib/types";
 
-// 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）。
-// refreshExchange を付けると「交流内容を再反映」になる：交流セルの教科・内容・交流先を
-// 時間割から上書きする（担当の先生・介助員・場所は保持）。手入力のある支援セルは温存し、
-// 空の支援セルは交流セルに起こす。交流から外れたコマの空の交流セルは支援に戻す（取り残し整理）。
+// 児童・交流時間割から週のセル雛形を作る（既存セルがあれば温存）
 export function buildWeekCells(
   students: Student[],
   classes: ExchangeClass[],
   prev?: Record<string, Record<string, CellPlan>>,
-  opts?: { refreshExchange?: boolean },
 ): Record<string, Record<string, CellPlan>> {
   const classById = new Map(classes.map((c) => [c.id, c]));
   const out: Record<string, Record<string, CellPlan>> = {};
   for (const st of students) {
     const cls = st.exchangeClassId ? classById.get(st.exchangeClassId) : undefined;
-    // 不正なコマ指定は無視する（旧データ・API経由の混入対策）
-    const exchangeKeys = new Set(
-      (Array.isArray(st.exchangeSlots) ? st.exchangeSlots : []).filter(isValidSlot).map((s) => slotKey(s.day, s.period)),
-    );
+    const exchangeKeys = new Set(st.exchangeSlots.map((s) => slotKey(s.day, s.period)));
     const cur: Record<string, CellPlan> = {};
     for (let day = 0; day < 5; day++) {
       for (let period = 1; period <= 6; period++) {
         const key = slotKey(day, period);
-        const raw = prev?.[st.id]?.[key];
-        // 壊れたセル（null・形状不正）は温存せず作り直す
-        const kept = isValidCell(raw) ? raw : undefined;
-        const slotCls = exchangeKeys.has(key) ? cls : undefined;
-        if (!opts?.refreshExchange) {
-          if (kept) {
-            cur[key] = kept;
-            continue;
-          }
-          if (slotCls) {
-            const src = slotCls.timetable[day]?.[period - 1];
-            cur[key] = {
-              place: "exchange",
-              subject: src?.subject ?? "",
-              content: src?.content ?? "",
-              teacher: "",
-              aideId: null,
-              classId: slotCls.id,
-            };
-          } else {
-            cur[key] = blankCell("support");
-          }
-          continue;
-        }
-        if (slotCls) {
-          const src = slotCls.timetable[day]?.[period - 1];
-          if (kept?.place === "exchange") {
-            cur[key] = { ...kept, subject: src?.subject ?? "", content: src?.content ?? "", classId: slotCls.id };
-          } else if (kept && (kept.subject || kept.content || kept.teacher || kept.aideId)) {
-            cur[key] = kept;
-          } else {
-            cur[key] = {
-              place: "exchange",
-              subject: src?.subject ?? "",
-              content: src?.content ?? "",
-              teacher: "",
-              aideId: null,
-              classId: slotCls.id,
-            };
-          }
-          continue;
-        }
+        const kept = prev?.[st.id]?.[key];
         if (kept) {
-          // 交流から外れたコマ：手入力のあるセルは温存し、空の交流セルは支援に戻す
-          if (kept.place === "exchange" && !kept.subject && !kept.content && !kept.teacher && !kept.aideId) {
-            cur[key] = blankCell("support");
-            continue;
-          }
           cur[key] = kept;
           continue;
         }
-        cur[key] = blankCell("support");
+        if (exchangeKeys.has(key) && cls) {
+          const src = cls.timetable[day]?.[period - 1];
+          cur[key] = {
+            place: "exchange",
+            subject: src?.subject ?? "",
+            content: src?.content ?? "",
+            teacher: "",
+            aideId: null,
+            classId: cls.id,
+          };
+        } else {
+          cur[key] = blankCell("support");
+        }
       }
     }
     out[st.id] = cur;
-  }
-  return out;
-}
-
-// 削除済み介助員の幽霊参照を外す（週コピー・旧データの掃除用）
-export function dropGhostAides(
-  cells: Record<string, Record<string, CellPlan>>,
-  aides: Aide[],
-): Record<string, Record<string, CellPlan>> {
-  const ids = new Set(aides.map((a) => a.id));
-  const out: Record<string, Record<string, CellPlan>> = {};
-  for (const [sid, bySlot] of Object.entries(cells)) {
-    const next: Record<string, CellPlan> = {};
-    for (const [key, cell] of Object.entries(bySlot)) {
-      next[key] = cell.aideId && !ids.has(cell.aideId) ? { ...cell, aideId: null } : cell;
-    }
-    out[sid] = next;
   }
   return out;
 }
@@ -104,7 +46,6 @@ export function applyRoster(
   students: Student[],
   posts: WeekAidePost[] | undefined,
   absent?: Record<string, number[]>,
-  aides: Aide[] = [],
 ): Record<string, Record<string, CellPlan>> {
   const list = Array.isArray(posts) ? posts : [];
   const clean = list
@@ -128,13 +69,6 @@ export function applyRoster(
     }
   }
   const classOf = new Map(students.map((s) => [s.id, s.exchangeClassId]));
-  const off = new Set<string>();
-  for (const a of aides) {
-    for (const s of a.offSlots ?? []) {
-      if (!isValidSlot(s)) continue;
-      off.add(`${a.id}@${slotKey(s.day, s.period)}`);
-    }
-  }
   const out: Record<string, Record<string, CellPlan>> = {};
   for (const [sid, bySlot] of Object.entries(cells)) {
     const offDays = Array.isArray(absent?.[sid]) ? (absent as Record<string, number[]>)[sid] : [];
@@ -147,11 +81,6 @@ export function applyRoster(
       const cid = cell.classId ?? classOf.get(sid) ?? null;
       // クラス指定は交流セルのみ。児童指定は全セル
       const aide = byStudent.get(sid) ?? (cell.place === "exchange" && cid ? byClass.get(cid) : undefined) ?? null;
-      // 勤務不可コマには入れない（後段の自動割付で別候補が付く）
-      if (aide && off.has(`${aide}@${key}`)) {
-        next[key] = cell;
-        continue;
-      }
       next[key] = aide ? { ...cell, aideId: aide } : cell;
     }
     out[sid] = next;
@@ -171,10 +100,7 @@ export function autoAssignAides(
   };
   const off = new Set<string>();
   for (const a of aides) {
-    for (const s of a.offSlots ?? []) {
-      if (!isValidSlot(s)) continue;
-      off.add(`${a.id}@${slotKey(s.day, s.period)}`);
-    }
+    for (const s of a.offSlots) off.add(`${a.id}@${slotKey(s.day, s.period)}`);
   }
   const load = new Map<string, number>(aides.map((a) => [a.id, 0]));
   // 既存割付を負荷に計上
@@ -231,49 +157,9 @@ export function formatWeek(weekStart: string): string {
   return `${f(weekStart)}〜${f(end)}の週`;
 }
 
-// 印刷・出力の表題を作る共通処理（学校名があれば先頭に付ける。全国の学校で使うための設定）
-export function exportTitle(weekStart: string, schoolName?: string): string {
-  const name = typeof schoolName === "string" ? schoolName.trim().slice(0, 60) : "";
-  return `${name ? `${name} ` : ""}週予定表 ${weekStart}（${formatWeek(weekStart)}）`;
-}
-
 export function aideName(aides: Aide[], id: string | null): string {
   if (!id) return "";
   return aides.find((a) => a.id === id)?.name ?? "";
-}
-
-// 担当表の参照整理（コピー・復元時に消えた児童・介助員・クラスを落とす）
-export function sanitizePosts(
-  posts: WeekAidePost[] | undefined,
-  students: Student[],
-  aides: Aide[],
-  classes: ExchangeClass[],
-): WeekAidePost[] {
-  if (!Array.isArray(posts)) return [];
-  const sids = new Set(students.map((s) => s.id));
-  const aids = new Set(aides.map((a) => a.id));
-  const cids = new Set(classes.map((c) => c.id));
-  const out: WeekAidePost[] = [];
-  for (const p of posts) {
-    if (!p || typeof p !== "object" || !aids.has((p as WeekAidePost).aideId)) continue;
-    const post = p as WeekAidePost;
-    const studentIds = (post.studentIds ?? []).filter((id) => typeof id === "string" && sids.has(id));
-    const classIds = (post.classIds ?? []).filter((id) => typeof id === "string" && cids.has(id));
-    if (studentIds.length === 0 && classIds.length === 0) continue;
-    out.push({ aideId: post.aideId, studentIds, classIds });
-  }
-  return out;
-}
-
-// 介助員の週間担当コマ数を数える（負荷の見える化用）
-export function countAideSlots(cells: Record<string, Record<string, CellPlan>>, aideId: string): number {
-  let n = 0;
-  for (const bySlot of Object.values(cells)) {
-    for (const cell of Object.values(bySlot)) {
-      if (cell.aideId === aideId) n += 1;
-    }
-  }
-  return n;
 }
 
 function absentDaysOf(week: WeekPlan, sid: string): number[] {
@@ -295,112 +181,6 @@ export function sortClasses<T extends { name: string }>(classes: T[]): T[] {
     }
     return a.name.localeCompare(b.name, "ja");
   });
-}
-
-// クラス×曜日 一覧（A4横1枚向け）: 参考様式の主表と同じ構成。
-// 列=曜日×クラス、行=日/曜日/予定/朝活動/時限/連絡等/下校時刻。児童名は出さない。
-export type OverviewColumn = { day: number; weekday: string; classId: string; className: string; label: string };
-export type OverviewTable = { columns: OverviewColumn[]; header: string[]; rows: string[][] };
-
-export function classOverviewTable(input: WeekDayInput): OverviewTable {
-  const activeClasses = sortClasses(input.classes.filter((c) => input.students.some((s) => s.exchangeClassId === c.id)));
-  const byClass = new Map(activeClasses.map((c) => [c.id, c]));
-  const columns: OverviewColumn[] = DAYS.flatMap((d, day) =>
-    activeClasses.map((c) => ({ day, weekday: d, classId: c.id, className: c.name, label: `${d}　${c.name}` })),
-  );
-  const header = ["時限", ...columns.map((col) => col.label)];
-  const staffOf = (cls: ExchangeClass, day: number, p: number): string => {
-    const key = slotKey(day, p);
-    const set = new Set<string>();
-    for (const s of input.students) {
-      if (s.exchangeClassId !== cls.id) continue;
-      const c = input.week.cells[s.id]?.[key];
-      if (!c || c.place !== "exchange") continue;
-      if ((c.classId ?? s.exchangeClassId) !== cls.id) continue;
-      const t = [c.teacher ?? "", aideName(input.aides, c.aideId ?? null)].filter(Boolean).join("・");
-      if (t) set.add(t);
-    }
-    return Array.from(set).join("・");
-  };
-  const rows: string[][] = [];
-  rows.push(["日", ...columns.map(({ day }) => addDays(input.week.weekStart, day).slice(5).replace("-", "/"))]);
-  rows.push(["曜日", ...columns.map(({ weekday }) => weekday)]);
-  const dayNotes = DAYS.map((_, day) => input.week.dayNotes?.[day] ?? "");
-  if (dayNotes.some((v) => v.trim())) rows.push(["予定", ...columns.map(({ day }) => dayNotes[day])]);
-  if (activeClasses.some((c) => (c.morning ?? []).some((v) => (v ?? "").trim()))) {
-    rows.push(["朝活動", ...columns.map(({ day, classId }) => byClass.get(classId)?.morning?.[day] ?? "")]);
-  }
-  for (const p of PERIODS) {
-    rows.push([
-      `${p}`,
-      ...columns.map(({ day, classId }) => {
-        const cls = byClass.get(classId);
-        const slot = cls?.timetable[day]?.[p - 1];
-        const lines: string[] = [];
-        if (slot?.subject) lines.push(slot.subject);
-        if (slot?.content) lines.push(slot.content);
-        const staff = cls ? staffOf(cls, day, p) : "";
-        if (staff) lines.push(staff);
-        return lines.join("\n");
-      }),
-    ]);
-  }
-  if (activeClasses.some((c) => (c.notice ?? "").trim())) {
-    rows.push(["連絡等", ...columns.map(({ classId }) => byClass.get(classId)?.notice ?? "")]);
-  }
-  if (activeClasses.some((c) => (c.dismissal ?? []).some((v) => (v ?? "").trim()))) {
-    rows.push(["下校時刻", ...columns.map(({ day, classId }) => byClass.get(classId)?.dismissal?.[day] ?? "")]);
-  }
-  return { columns, header, rows };
-}
-
-// クラス別（日ごと）: 参考様式のクラス表と同じ構成。列=曜日、行=予定/朝活動/時限/連絡等/下校時刻
-export type ClassDayTable = { title: string; header: string[]; rows: string[][] };
-
-export function classDayTable(input: WeekDayInput, classId: string): ClassDayTable | null {
-  const cls = input.classes.find((c) => c.id === classId);
-  if (!cls) return null;
-  const attendees = input.students.filter((s) => s.exchangeClassId === classId);
-  if (attendees.length === 0) return null;
-  const title = `${cls.name}　${attendees.map((s) => s.name).join("・")}`;
-  const header = ["", ...DAYS.map((d, day) => `${d}（${addDays(input.week.weekStart, day).slice(5).replace("-", "/")}）`)];
-  const rows: string[][] = [];
-  const hasAny = (values: (string | undefined)[]) => values.some((v) => (v ?? "").trim().length > 0);
-
-  const dayNotes = DAYS.map((_, day) => input.week.dayNotes?.[day] ?? "");
-  if (hasAny(dayNotes)) rows.push(["予定", ...dayNotes]);
-
-  const morning = DAYS.map((_, day) => cls.morning?.[day] ?? "");
-  if (hasAny(morning)) rows.push(["朝活動", ...morning]);
-
-  for (const p of PERIODS) {
-    rows.push([
-      `${p}`,
-      ...DAYS.map((_, day) => {
-        const slot = cls.timetable[day]?.[p - 1];
-        const lines: string[] = [];
-        if (slot?.subject) lines.push(slot.subject);
-        if (slot?.content) lines.push(slot.content);
-        const staffSet = new Set<string>();
-        for (const s of attendees) {
-          const c = input.week.cells[s.id]?.[slotKey(day, p)];
-          if (!c || c.place !== "exchange") continue;
-          if ((c.classId ?? s.exchangeClassId) !== classId) continue;
-          const staff = [c.teacher ?? "", aideName(input.aides, c.aideId ?? null)].filter(Boolean).join("・");
-          if (staff) staffSet.add(staff);
-        }
-        if (staffSet.size > 0) lines.push(Array.from(staffSet).join("・"));
-        return lines.join("\n");
-      }),
-    ]);
-  }
-
-  if (cls.notice) rows.push(["連絡等", ...DAYS.map(() => cls.notice ?? "")]);
-
-  const dismissal = DAYS.map((_, day) => cls.dismissal?.[day] ?? "");
-  if (hasAny(dismissal)) rows.push(["下校時刻", ...dismissal]);
-
-  return { title, header, rows };
 }
 
 // 交流クラス別：曜日ごとのまとめ（1曜日＝1表：行=クラス＋支援学級、列=時限）
