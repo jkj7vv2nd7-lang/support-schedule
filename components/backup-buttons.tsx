@@ -86,6 +86,9 @@ export default function BackupButtons() {
       {message ? (
         <p className={`mt-2 text-xs ${isError ? "font-bold text-red-600" : "text-zinc-600"}`}>{message}</p>
       ) : null}
+      <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+        バックアップには児童名などの個人情報が含まれます。ファイルの保管・受け渡しは各校のルールに従ってください。
+      </p>
     </div>
   );
 }

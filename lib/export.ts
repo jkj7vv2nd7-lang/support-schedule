@@ -1,4 +1,4 @@
-import { BorderStyle, Document, Packer, PageBreak, PageOrientation, Paragraph, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType, convertMillimetersToTwip } from "docx";
+import { BorderStyle, Document, HeightRule, Packer, PageBreak, PageOrientation, Paragraph, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType, convertMillimetersToTwip } from "docx";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
@@ -39,6 +39,50 @@ export function sanitizeFileName(name: unknown): string {
     .trim()
     .slice(0, 60);
   return clean || "export";
+}
+
+/* ページ充填（A4用紙一枚に精一杯の大きさで表を印刷する）用の概算ヘルパ -------------
+ * Excelは「列幅単位（半角文字数）」、Wordは「twip」で扱うため、
+ * 呼び出し側で1行あたりの幅を渡してセル内折り返し行数を概算する。
+ */
+
+// 半角=1, 全角=2 として文字列幅（文字数換算）を返す
+function segWidth(s: string): number {
+  let w = 0;
+  for (const ch of Array.from(s)) w += ch.charCodeAt(0) > 0x2e80 ? 2 : 1;
+  return Math.max(w, 1);
+}
+
+// 1行の文字数容量 perLine に対するセル内の折り返し行数を概算する
+function cellLines(text: string, perLine: number): number {
+  const src = String(text ?? "");
+  if (!src) return 1;
+  const pl = Math.max(1, Math.floor(perLine));
+  let total = 0;
+  for (const seg of src.split("\n")) total += Math.max(1, Math.ceil(segWidth(seg) / pl));
+  return total;
+}
+
+// 行の概算高さを返す（lineH: 1行分の高さ、pad: 上下余白）
+function estRowH(cells: string[], perLines: number[], lineH: number, pad: number): number {
+  let max = 0;
+  cells.forEach((t, i) => {
+    const h = cellLines(t, perLines[i] ?? perLines[0] ?? 10) * lineH + pad;
+    if (h > max) max = h;
+  });
+  return max;
+}
+
+// 表（見出し行+本文行）の行高さを、指定した目標高さ target に達するよう拡大する。
+// 概算合計が target の1倍〜2.5倍のときにしか広げず、それ以上は自然な高さのままにする
+// （＝大きな一覧表がむやみにページ数を増やさないようにする）。
+// 戻り値: 行ごとの高さ（自然な高さと同じ単位）
+function fillRowHeights(natural: number[], target: number): number[] {
+  const sum = natural.reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) return natural;
+  const ratio = target / sum;
+  if (ratio < 1 || ratio > 2.5) return natural;
+  return natural.map((h) => Math.max(h, Math.round(h * ratio)));
 }
 
 // 表の列幅比率（先頭列＝曜日/クラス名などのラベル列は少し狭く、残りは均等割り）
@@ -196,6 +240,10 @@ export type TableSepOpts = {
   boxRows?: boolean;
   strongHeader?: boolean;
   outer?: boolean;
+  // A4一枚に精一杯の表にするために、表全体の目標高さ（pt）を指定する（Excel用）
+  fillHeightPt?: number;
+  // A4一枚に精一杯の表にするために、表全体の目標高さ（twip）を指定する（Word用）
+  fillHeightTwips?: number;
 };
 
 export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportLayouts = { sheets: true, overview: true, exchange: true, aides: true, classDaily: false, classOverview: false }): Promise<Buffer> {
@@ -239,11 +287,24 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
         if (ri % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F6FB" } };
       });
     });
-    // 列幅は均等割り（先頭列は少し狭め）にしてA4いっぱいに広げる。折り返し表示前提。
-    const totalUnits = 132;
+    // 列幅はA4横(印刷可能域)いっぱいに広げる。折り返し表示前提。
+    const totalUnits = 150;
     const firstW = 14;
     const rest = header.length > 1 ? Math.max(7, (totalUnits - firstW) / (header.length - 1)) : totalUnits;
-    ws.columns = header.map((_, i) => ({ width: i === 0 ? firstW : rest }));
+    const widths = header.map((_, i) => (i === 0 ? firstW : rest));
+    ws.columns = header.map((_, i) => ({ width: widths[i] }));
+    // 行高をページいっぱいに拡大（A4一枚に精一杯の表）。自然な高さは「1行あたり16pt＋余白」で概算。
+    const targetPt = opts?.fillHeightPt ?? 0;
+    if (targetPt > 0) {
+      const perLines = widths.map((w) => Math.max(4, w - 2));
+      const allRows = [header, ...rows];
+      const natural = allRows.map((r) => estRowH(r, perLines, 16, 8));
+      const filled = fillRowHeights(natural, targetPt);
+      filled.forEach((pt, i) => {
+        const row = ws.getRow(h.number + i);
+        row.height = Math.min(409, Math.max(12, pt));
+      });
+    }
   };
   const ws1 = wb.addWorksheet("児童別", { views: [{ showGridLines: false }] });
   ws1.pageSetup = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { top: 0.4, bottom: 0.4, left: 0.3, right: 0.3, header: 0.2, footer: 0.2 } };
@@ -254,7 +315,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       if (!sheet) continue;
       ws1.addRow([]);
       ws1.addRow([sheet.title]).font = { bold: true, size: 12 };
-      putTable(ws1, sheet.header, sheet.rows, { boxRows: true });
+      putTable(ws1, sheet.header, sheet.rows, { boxRows: true, fillHeightPt: 480 });
       if (sheet.notes) ws1.addRow([`〔配慮メモ〕${sheet.notes}`]);
     }
   }
@@ -264,7 +325,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     ws2.pageSetup = pageSetup;
     ws2.addRow([title]).font = { bold: true, size: 13 };
     const ov = overviewRows(input);
-    putTable(ws2, ov.header, ov.rows, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows) });
+    putTable(ws2, ov.header, ov.rows, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows), fillHeightPt: 480 });
   }
   if (layouts.exchange) {
     const ws3 = wb.addWorksheet("交流クラス別", { views: [{ showGridLines: false }] });
@@ -273,7 +334,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
     for (const sec of daySections(input)) {
       ws3.addRow([]);
       ws3.addRow([`${sec.weekday}（${sec.date}）`]).font = { bold: true, size: 12 };
-      putTable(ws3, ["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells]));
+      putTable(ws3, ["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells]), { fillHeightPt: 420 });
     }
   }
   if (layouts.aides) {
@@ -285,7 +346,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       if (!sheet) continue;
       ws4.addRow([]);
       ws4.addRow([sheet.title]).font = { bold: true, size: 12 };
-      putTable(ws4, sheet.header, sheet.rows, { boxRows: true });
+      putTable(ws4, sheet.header, sheet.rows, { boxRows: true, fillHeightPt: 480 });
     }
   }
   if (layouts.classDaily) {
@@ -297,7 +358,7 @@ export async function buildWeekXlsx(input: WeekExportInput, layouts: WeekExportL
       if (!sheet) continue;
       ws5.addRow([]);
       ws5.addRow([sheet.title]).font = { bold: true, size: 12 };
-      putTable(ws5, sheet.header, sheet.rows, { boxCols: true });
+      putTable(ws5, sheet.header, sheet.rows, { boxCols: true, fillHeightPt: 480 });
     }
   }
   if (layouts.classOverview) {
@@ -344,6 +405,21 @@ function docxTable(header: string[], rows: string[][], fontSize = 18, opts?: Tab
   const boxRowIdx = opts?.boxRows ? rows.map((_, i) => i) : [];
   const topSet = new Set([...(opts?.rowSeps ?? []), ...boxRowIdx]);
   const bottomSet = new Set([...(opts?.rowSepsB ?? []), ...boxRowIdx]);
+  // A4横の印刷可能幅（ページ幅297mm−左右マージン560twip×2）で各列のtwip幅を概算
+  const usableWTwips = convertMillimetersToTwip(297) - 1120;
+  // 1文字の幅＝フォントサイズ(pt＝半角半分)。半角換算で文字が何文字入るかを概算する
+  const charWTwips = Math.max((fontSize / 2) * 20, 4);
+  const perLines = widths.map((w) => {
+    const colTwips = (usableWTwips * (Math.min(w, 100) / 100)) - 200; // セル余白にも/右100twip
+    return Math.max(4, Math.floor(colTwips / charWTwips));
+  });
+  const estH = (cells: string[]) => estRowH(cells, perLines, (fontSize / 2) * 20 * 1.2, 120);
+  const naturalHeights = [header, ...rows].map((r) => estH(r));
+  const filledHeights = opts?.fillHeightTwips ? fillRowHeights(naturalHeights, opts.fillHeightTwips) : [];
+  const rowHeight = (i: number) =>
+    filledHeights[i]
+      ? { height: { value: Math.max(80, Math.round(filledHeights[i] ?? 0)), rule: HeightRule.ATLEAST } }
+      : {};
   const cell = (text: string, isHeader: boolean, w: number, zebra: boolean, ri: number) => {
     const top = (isHeader ? outer : topSet.has(ri)) ? CELL_BORDER_STRONG : CELL_BORDER;
     const left = ((outer && w === 0) || leftSet.has(w)) ? CELL_BORDER_STRONG : CELL_BORDER;
@@ -372,8 +448,10 @@ function docxTable(header: string[], rows: string[][], fontSize = 18, opts?: Tab
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
-      ...(header.length > 0 ? [new TableRow({ children: header.map((h, i) => cell(h, true, i, false, -1)), tableHeader: true, cantSplit: true })] : []),
-      ...rows.map((r, ri) => new TableRow({ children: r.map((t, i) => cell(t, false, i, ri % 2 === 1, ri)), cantSplit: true })),
+      ...(header.length > 0
+        ? [new TableRow({ children: header.map((h, i) => cell(h, true, i, false, -1)), tableHeader: true, cantSplit: true, ...rowHeight(0) })]
+        : []),
+      ...rows.map((r, ri) => new TableRow({ children: r.map((t, i) => cell(t, false, i, ri % 2 === 1, ri)), cantSplit: true, ...rowHeight(ri + (header.length > 0 ? 1 : 0)) })),
     ],
   });
 }
@@ -387,6 +465,10 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
   const children: Array<Paragraph | Table> = [
     new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 30, font: FONT })], spacing: { after: 80 } }),
   ];
+  // A4横（高さ210mm=11907twip）から上下マージン720twip×2を引いた印刷可能高さ
+  const printableTwips = 11907 - 1440;
+  // 1ページに収まる表の目標高さ（タイトル行などの分を差し引く）
+  const pageFillTarget = printableTwips - 400;
   let started = false;
   const needBreak = () => {
     if (started) children.push(pageBreakPara());
@@ -399,7 +481,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       needBreak();
       children.push(
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-        docxTable(sheet.header, sheet.rows, 18, { boxRows: true }),
+        docxTable(sheet.header, sheet.rows, 18, { boxRows: true, fillHeightTwips: pageFillTarget }),
       );
       if (sheet.notes) {
         children.push(
@@ -417,7 +499,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       new Paragraph({ children: [new TextRun({ text: "全体一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
     );
     const ov = overviewRows(input);
-    children.push(docxTable(ov.header, ov.rows, 18, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows) }));
+    children.push(docxTable(ov.header, ov.rows, 18, { rowSeps: dayGroupSeps(ov.rows), rowSepsB: dayGroupEnds(ov.rows), fillHeightTwips: pageFillTarget }));
   }
   if (layouts.exchange) {
     needBreak();
@@ -427,7 +509,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
     for (const sec of daySections(input)) {
       children.push(
         new Paragraph({ children: [new TextRun({ text: `${sec.weekday}（${sec.date}）`, bold: true, size: 18, font: FONT })], spacing: { before: 120, after: 60 } }),
-        docxTable(["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells])),
+        docxTable(["クラス", ...PERIODS.map((p) => `${p}時限`)], sec.rows.map((r) => [r.label, ...r.cells]), 18, { fillHeightTwips: Math.round(pageFillTarget / Math.max(daySections(input).length, 1)) }),
       );
     }
   }
@@ -438,7 +520,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       needBreak();
       children.push(
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-        docxTable(sheet.header, sheet.rows, 18, { boxRows: true }),
+        docxTable(sheet.header, sheet.rows, 18, { boxRows: true, fillHeightTwips: pageFillTarget }),
       );
     }
   }
@@ -449,7 +531,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       needBreak();
       children.push(
         new Paragraph({ children: [new TextRun({ text: sheet.title, bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
-        docxTable(sheet.header, sheet.rows, 18, { boxCols: true }),
+        docxTable(sheet.header, sheet.rows, 18, { boxCols: true, fillHeightTwips: pageFillTarget }),
       );
     }
   }
@@ -461,7 +543,7 @@ export async function buildWeekDocx(input: WeekExportInput, layouts: WeekExportL
       children.push(
         new Paragraph({ children: [new TextRun({ text: "クラス×曜日 一覧", bold: true, size: 22, font: FONT })], spacing: { before: 200, after: 80 } }),
         // 列数が多くなりやすい表なので、1ページに収まりやすいよう小さめのフォントで組む（用紙サイズによっては複数ページに分かれる場合があります）
-        docxTable(grid.header, grid.rows, 13, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds }),
+        docxTable(grid.header, grid.rows, 13, { colSeps: grid.dayStarts, colSepsR: grid.dayEnds, fillHeightTwips: pageFillTarget }),
       );
     }
   }

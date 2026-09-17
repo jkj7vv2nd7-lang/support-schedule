@@ -45,4 +45,5 @@ next-env.d.ts
 *.pdf
 *.docx
 
+# vercel（Git接続・デプロイ管理ファイル）
 .vercel

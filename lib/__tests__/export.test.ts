@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import { buildWeekDocx, buildWeekPdf, buildWeekXlsx, sanitizeFileName, type WeekExportInput } from "@/lib/export";
 import { emptyTimetable } from "@/lib/types";
 
@@ -120,6 +121,33 @@ describe("week export", () => {
     expect(headerRow!.getCell(1).border.left?.style).toBe("medium");
     const lastCol = headerRow!.cellCount;
     expect(headerRow!.getCell(lastCol).border.right?.style).toBe("medium");
+  });
+
+  it("ExcelはA4いっぱいに表を広げるため行高が設定される", async () => {
+    const only = { sheets: true, overview: false, exchange: false, aides: false, classDaily: false, classOverview: false };
+    const buf = await buildWeekXlsx(input(), only);
+    const wb = new ExcelJS.Workbook();
+    await (wb.xlsx.load as unknown as (data: Uint8Array) => Promise<ExcelJS.Workbook>)(buf);
+    const ws = wb.getWorksheet("児童別");
+    expect(ws).toBeDefined();
+    const heights: number[] = [];
+    ws!.eachRow((row) => {
+      if (typeof row.height === "number" && row.height > 15) heights.push(row.height);
+    });
+    // 見出し行＋5日分の行に、横幅いっぱいの目標高さ(480pt)が割り振られている
+    expect(heights.length).toBeGreaterThanOrEqual(6);
+    expect(Math.max(...heights)).toBeGreaterThanOrEqual(40);
+  });
+
+  it("Wordの表行にA4いっぱいの最低高さ(atLeast)が設定される", async () => {
+    const only = { sheets: true, overview: false, exchange: false, aides: false, classDaily: false, classOverview: false };
+    const buf = await buildWeekDocx(input(), only);
+    const zip = await JSZip.loadAsync(buf);
+    const xml = await zip.file("word/document.xml")!.async("string");
+    // 行の最低高さ(hRule="atLeast")が設定され、見出し行(tableHeader)がある
+    const atLeastCount = (xml.match(/trHeight[^>]*w:val/g) ?? []).length;
+    expect(atLeastCount).toBeGreaterThanOrEqual(6); // 見出し行＋5日分
+    expect(xml).toContain("tblHeader");
   });
 });
 
